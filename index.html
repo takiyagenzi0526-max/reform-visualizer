@@ -596,63 +596,89 @@ function seededRandom(seed) {
   };
 }
 
-// ===== Draw woven texture (織物調) =====
+// ===== Draw woven texture (織物調) — soft, natural =====
 function drawWoven(ctx, x, y, w, h, c, c2) {
   const baseAlpha = ctx.globalAlpha;
-  ctx.globalAlpha = baseAlpha;
-  ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = c; ctx.globalAlpha = baseAlpha;
+  ctx.fillRect(x, y, w, h);
   const rng = seededRandom(c.charCodeAt(1)*137 + c.charCodeAt(3)*53);
-  for (let iy = 0; iy < h; iy += 2) {
-    ctx.strokeStyle = c2;
-    ctx.globalAlpha = baseAlpha * (0.2 + rng() * 0.3);
-    ctx.lineWidth = 0.6;
-    ctx.beginPath(); ctx.moveTo(x, y+iy); ctx.lineTo(x+w, y+iy); ctx.stroke();
+  // Soft mottled base — large gentle patches for color variation
+  for (let i = 0; i < Math.max(12, (w*h)/1200); i++) {
+    const px = x + rng()*w, py = y + rng()*h;
+    const r = 20 + rng()*40;
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, r);
+    grad.addColorStop(0, c2);
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = baseAlpha * (0.04 + rng()*0.06);
+    ctx.fillRect(px-r, py-r, r*2, r*2);
   }
-  for (let ix = 0; ix < w; ix += 2) {
-    ctx.strokeStyle = c2;
-    ctx.globalAlpha = baseAlpha * (0.15 + rng() * 0.25);
-    ctx.lineWidth = 0.5;
-    ctx.beginPath(); ctx.moveTo(x+ix, y); ctx.lineTo(x+ix, y+h); ctx.stroke();
+  // Fine woven lines — irregular spacing and slight waviness
+  ctx.strokeStyle = c2;
+  for (let iy = 0; iy < h; iy += 3 + rng()*2) {
+    ctx.globalAlpha = baseAlpha * (0.06 + rng()*0.08);
+    ctx.lineWidth = 0.4 + rng()*0.4;
+    ctx.beginPath();
+    ctx.moveTo(x, y+iy);
+    for (let ix = 0; ix < w; ix += 20) {
+      ctx.lineTo(x+ix, y+iy + (rng()-0.5)*0.8);
+    }
+    ctx.lineTo(x+w, y+iy);
+    ctx.stroke();
   }
-  ctx.globalAlpha = baseAlpha * 0.03;
-  for (let i = 0; i < (w * h) / 40; i++) {
-    const px = x + rng() * w, py = y + rng() * h;
+  for (let ix = 0; ix < w; ix += 3 + rng()*2) {
+    ctx.globalAlpha = baseAlpha * (0.04 + rng()*0.06);
+    ctx.lineWidth = 0.3 + rng()*0.3;
+    ctx.beginPath();
+    ctx.moveTo(x+ix, y);
+    for (let iy = 0; iy < h; iy += 20) {
+      ctx.lineTo(x+ix + (rng()-0.5)*0.8, y+iy);
+    }
+    ctx.lineTo(x+ix, y+h);
+    ctx.stroke();
+  }
+  // Very subtle noise
+  ctx.globalAlpha = baseAlpha * 0.015;
+  for (let i = 0; i < (w*h)/80; i++) {
     ctx.fillStyle = rng() > 0.5 ? '#FFF' : '#000';
-    ctx.fillRect(px, py, 1, 1);
+    ctx.fillRect(x+rng()*w, y+rng()*h, 1, 1);
   }
   ctx.globalAlpha = baseAlpha;
 }
 
-// ===== Draw stone texture (石目調) =====
+// ===== Draw stone texture (石目調) — soft, natural =====
 function drawStone(ctx, x, y, w, h, c, c2, c3) {
   const baseAlpha = ctx.globalAlpha;
-  ctx.globalAlpha = baseAlpha;
-  ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = c; ctx.globalAlpha = baseAlpha;
+  ctx.fillRect(x, y, w, h);
   const rng = seededRandom(c.charCodeAt(2)*211 + c.charCodeAt(4)*67);
-  for (let i = 0; i < Math.max(20, (w*h)/600); i++) {
-    const px = x + rng() * w, py = y + rng() * h;
-    const r = 8 + rng() * 25;
+  // Large soft patches — many overlapping for smoothness
+  for (let i = 0; i < Math.max(40, (w*h)/300); i++) {
+    const px = x + rng()*w, py = y + rng()*h;
+    const r = 15 + rng()*45;
     const grad = ctx.createRadialGradient(px, py, 0, px, py, r);
-    grad.addColorStop(0, rng() > 0.5 ? c2 : c3);
+    grad.addColorStop(0, [c, c2, c3][Math.floor(rng()*3)]);
+    grad.addColorStop(0.6, 'transparent');
     grad.addColorStop(1, 'transparent');
     ctx.fillStyle = grad;
-    ctx.globalAlpha = baseAlpha * (0.15 + rng() * 0.2);
-    ctx.fillRect(px - r, py - r, r * 2, r * 2);
+    ctx.globalAlpha = baseAlpha * (0.05 + rng()*0.08);
+    ctx.fillRect(px-r, py-r, r*2, r*2);
   }
-  ctx.globalAlpha = baseAlpha * 0.06;
-  for (let i = 0; i < (w * h) / 20; i++) {
-    const px = x + rng() * w, py = y + rng() * h;
+  // Fine speckles — very subtle
+  ctx.globalAlpha = baseAlpha * 0.03;
+  for (let i = 0; i < (w*h)/40; i++) {
     ctx.fillStyle = rng() > 0.5 ? c2 : c3;
-    ctx.fillRect(px, py, rng() * 2 + 0.5, rng() * 2 + 0.5);
+    ctx.fillRect(x+rng()*w, y+rng()*h, rng()+0.5, rng()+0.5);
   }
-  ctx.globalAlpha = baseAlpha * 0.06;
-  ctx.strokeStyle = c3; ctx.lineWidth = 0.5;
-  for (let i = 0; i < 5; i++) {
+  // Faint veins
+  ctx.globalAlpha = baseAlpha * 0.03;
+  ctx.strokeStyle = c3; ctx.lineWidth = 0.4;
+  for (let i = 0; i < 4; i++) {
     ctx.beginPath();
-    let vx = x + rng() * w, vy = y + rng() * h;
+    let vx = x + rng()*w, vy = y + rng()*h;
     ctx.moveTo(vx, vy);
-    for (let j = 0; j < 6; j++) {
-      vx += (rng() - 0.5) * 40; vy += (rng() - 0.5) * 40;
+    for (let j = 0; j < 8; j++) {
+      vx += (rng()-0.5)*50; vy += (rng()-0.5)*50;
       ctx.lineTo(vx, vy);
     }
     ctx.stroke();
@@ -660,34 +686,46 @@ function drawStone(ctx, x, y, w, h, c, c2, c3) {
   ctx.globalAlpha = baseAlpha;
 }
 
-// ===== Draw plaster texture (塗り壁調) =====
+// ===== Draw plaster texture (塗り壁調) — soft, natural =====
 function drawPlaster(ctx, x, y, w, h, c, c2) {
   const baseAlpha = ctx.globalAlpha;
-  ctx.globalAlpha = baseAlpha;
-  ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = c; ctx.globalAlpha = baseAlpha;
+  ctx.fillRect(x, y, w, h);
   const rng = seededRandom(c.charCodeAt(1)*97 + c.charCodeAt(5)*31);
-  ctx.globalAlpha = baseAlpha * 0.08;
+  // Soft mottled patches
   for (let i = 0; i < Math.max(15, (w*h)/800); i++) {
-    const sx = x + rng() * w, sy = y + rng() * h;
+    const px = x + rng()*w, py = y + rng()*h;
+    const r = 20 + rng()*35;
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, r);
+    grad.addColorStop(0, c2);
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = baseAlpha * (0.03 + rng()*0.05);
+    ctx.fillRect(px-r, py-r, r*2, r*2);
+  }
+  // Gentle trowel strokes — lower alpha, smoother
+  ctx.globalAlpha = baseAlpha * 0.04;
+  for (let i = 0; i < Math.max(10, (w*h)/1200); i++) {
+    const sx = x + rng()*w, sy = y + rng()*h;
     const angle = rng() * Math.PI;
-    const len = 20 + rng() * 50;
+    const len = 30 + rng()*60;
     ctx.strokeStyle = rng() > 0.5 ? c2 : c;
-    ctx.lineWidth = 1 + rng() * 3;
+    ctx.lineWidth = 1.5 + rng()*2;
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.quadraticCurveTo(
-      sx + Math.cos(angle) * len * 0.5 + (rng()-0.5)*10,
-      sy + Math.sin(angle) * len * 0.5 + (rng()-0.5)*10,
-      sx + Math.cos(angle) * len,
-      sy + Math.sin(angle) * len
+      sx + Math.cos(angle)*len*0.5 + (rng()-0.5)*15,
+      sy + Math.sin(angle)*len*0.5 + (rng()-0.5)*15,
+      sx + Math.cos(angle)*len,
+      sy + Math.sin(angle)*len
     );
     ctx.stroke();
   }
-  ctx.globalAlpha = baseAlpha * 0.04;
-  for (let i = 0; i < (w * h) / 25; i++) {
-    const px = x + rng() * w, py = y + rng() * h;
+  // Very fine grain
+  ctx.globalAlpha = baseAlpha * 0.02;
+  for (let i = 0; i < (w*h)/50; i++) {
     ctx.fillStyle = rng() > 0.5 ? '#FFF' : c2;
-    ctx.fillRect(px, py, rng() + 0.5, rng() + 0.5);
+    ctx.fillRect(x+rng()*w, y+rng()*h, rng()+0.3, rng()+0.3);
   }
   ctx.globalAlpha = baseAlpha;
 }
@@ -1084,9 +1122,15 @@ function loadImage(img) {
   const wrap = document.getElementById('canvas-wrap');
   const maxW = wrap.clientWidth - 32;
   const maxH = wrap.clientHeight - 16;
-  const ratio = Math.min(maxW / img.width, maxH / img.height, 1);
-  mainCanvas.width = Math.round(img.width * ratio);
-  mainCanvas.height = Math.round(img.height * ratio);
+  // Canvas uses full image resolution (capped at 2400px for performance)
+  const maxPx = 2400;
+  const fullRatio = Math.min(maxPx / img.width, maxPx / img.height, 1);
+  mainCanvas.width = Math.round(img.width * fullRatio);
+  mainCanvas.height = Math.round(img.height * fullRatio);
+  // CSS display size fits the wrap area
+  const displayRatio = Math.min(maxW / mainCanvas.width, maxH / mainCanvas.height, 1);
+  mainCanvas.style.width = Math.round(mainCanvas.width * displayRatio) + 'px';
+  mainCanvas.style.height = Math.round(mainCanvas.height * displayRatio) + 'px';
   overlayCanvas.width = mainCanvas.width;
   overlayCanvas.height = mainCanvas.height;
   overlayCanvas.style.position = 'absolute';
