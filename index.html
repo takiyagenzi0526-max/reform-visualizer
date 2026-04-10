@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>リフォームビジュアライザー | AXT</title>
+<style>
+:root {
+  --bg: #F7F6F3;
+  --surface: #FFFFFF;
+  --surface2: #F2F1EE;
+  --border: rgba(0,0,0,0.10);
+  --border2: rgba(0,0,0,0.18);
+  --text: #1A1A18;
+  --text2: #6B6B68;
+  --text3: #A8A8A5;
+  --accent: #2C5F4A;
+  --accent-light: #EAF2EE;
+  --accent-mid: #4A9470;
+  --danger: #C84040;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 4px rgba(0,0,0,0.08);
+  --sidebar-w: 280px;
+  --toolbar-h: 56px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); font-family: 'Hiragino Kana Gothic ProN', 'Hiragino Sans', 'Meiryo', sans-serif; color: var(--text); font-size: 14px; }
+
+/* Layout */
+#app { display: flex; flex-direction: column; height: 100vh; }
+#toolbar { height: var(--toolbar-h); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; padding: 0 16px; flex-shrink: 0; }
+#body { display: flex; flex: 1; overflow: hidden; }
+#canvas-area { flex: 1; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; position: relative; }
+#canvas-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 16px; position: relative; overflow: hidden; }
+#sidebar { width: var(--sidebar-w); background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+
+/* Toolbar */
+.brand { font-weight: 700; font-size: 15px; letter-spacing: -0.3px; color: var(--accent); margin-right: 8px; white-space: nowrap; }
+.tool-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 0 14px; height: 34px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--surface); color: var(--text); font-size: 13px; font-family: inherit; cursor: pointer; white-space: nowrap; transition: background 0.12s, opacity 0.12s; }
+.btn:hover:not(:disabled) { background: var(--surface2); }
+.btn:disabled { opacity: 0.35; cursor: default; }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.primary:hover { background: var(--accent-mid); border-color: var(--accent-mid); }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn.danger:hover { background: #FFF0F0; }
+.btn.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); font-weight: 500; }
+.btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.ml-auto { margin-left: auto; }
+
+/* Canvas */
+#drop-zone { position: absolute; inset: 16px; border: 2px dashed var(--border2); border-radius: var(--radius); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+#drop-zone:hover, #drop-zone.over { border-color: var(--accent); background: var(--accent-light); }
+#drop-zone .dz-icon { width: 52px; height: 52px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; }
+#drop-zone p { font-size: 15px; color: var(--text2); font-weight: 500; }
+#drop-zone span { font-size: 12px; color: var(--text3); }
+#main-canvas { display: none; max-width: 100%; max-height: 100%; border-radius: var(--radius-sm); box-shadow: 0 2px 16px rgba(0,0,0,0.12); cursor: crosshair; touch-action: none; }
+#overlay-canvas { position: absolute; pointer-events: none; border-radius: var(--radius-sm); }
+
+/* Status bar */
+#status-bar { height: 32px; background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; }
+#status-text { font-size: 12px; color: var(--text2); }
+#mode-badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: var(--accent-light); color: var(--accent); font-weight: 500; display: none; }
+
+/* Sidebar */
+.sb-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.sb-tab { flex: 1; height: 40px; border: none; background: none; font-family: inherit; font-size: 12px; font-weight: 500; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+.sb-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.sb-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.sb-panel.active { display: flex; }
+
+/* Material panel */
+.cat-bar { display: flex; gap: 6px; padding: 10px 12px; flex-shrink: 0; overflow-x: auto; }
+.cat-btn { padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border2); background: none; font-family: inherit; font-size: 12px; color: var(--text2); cursor: pointer; white-space: nowrap; transition: all 0.12s; flex-shrink: 0; }
+.cat-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.mat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 12px 12px; overflow-y: auto; flex: 1; }
+.mat-item { cursor: pointer; }
+.mat-swatch { width: 100%; aspect-ratio: 1; border-radius: var(--radius-sm); border: 2px solid transparent; overflow: hidden; transition: transform 0.12s, border-color 0.12s; position: relative; }
+.mat-swatch canvas { width: 100%; height: 100%; display: block; }
+.mat-swatch:hover { transform: scale(1.04); }
+.mat-swatch.selected { border-color: var(--accent); }
+.mat-swatch.selected::after { content: '✓'; position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.mat-label { font-size: 10px; color: var(--text2); text-align: center; margin-top: 4px; line-height: 1.3; }
+
+/* Selected material */
+.sel-area { padding: 10px 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.sel-label { font-size: 11px; color: var(--text3); margin-bottom: 6px; font-weight: 500; }
+.sel-card { background: var(--surface2); border-radius: var(--radius-sm); padding: 8px 10px; }
+.sel-name { font-weight: 600; font-size: 13px; color: var(--text); }
+.sel-hint { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.opacity-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.opacity-row label { font-size: 11px; color: var(--text3); white-space: nowrap; }
+.opacity-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.opacity-val { font-size: 12px; font-weight: 500; min-width: 32px; text-align: right; color: var(--text); }
+
+/* Apply button */
+.apply-area { padding: 10px 12px; flex-shrink: 0; }
+.btn-block { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; border-radius: var(--radius-sm); }
+
+/* AI panel */
+.ai-panel-inner { display: flex; flex-direction: column; gap: 0; height: 100%; overflow: hidden; }
+.ai-info { padding: 12px; font-size: 12px; color: var(--text2); line-height: 1.6; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ai-result-area { flex: 1; overflow-y: auto; padding: 12px; }
+.ai-result-box { background: var(--surface2); border-radius: var(--radius-sm); padding: 12px; font-size: 13px; line-height: 1.8; color: var(--text); min-height: 100px; white-space: pre-wrap; }
+.ai-result-box.placeholder { color: var(--text3); }
+.ai-actions { padding: 12px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); }
+.ai-typing { display: inline-block; animation: blink 0.8s infinite; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* History panel */
+.history-panel-inner { flex: 1; overflow-y: auto; padding: 10px 12px; }
+.history-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-bottom: 6px; background: var(--surface); cursor: pointer; }
+.history-item:hover { background: var(--surface2); }
+.history-swatch { width: 36px; height: 36px; border-radius: 4px; overflow: hidden; flex-shrink: 0; }
+.history-swatch canvas { width: 100%; height: 100%; display: block; }
+.history-info { flex: 1; overflow: hidden; }
+.history-name { font-size: 12px; font-weight: 500; color: var(--text); }
+.history-detail { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.history-del { padding: 4px 8px; border: none; background: none; color: var(--text3); cursor: pointer; font-size: 16px; border-radius: 4px; }
+.history-del:hover { color: var(--danger); background: #FFF0F0; }
+.empty-history { text-align: center; padding: 32px 16px; color: var(--text3); font-size: 13px; }
+
+/* Before/After overlay */
+#compare-overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); z-index: 100; }
+#compare-inner { background: var(--surface); border-radius: var(--radius); padding: 16px; max-width: 90vw; width: 700px; }
+#compare-inner h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compare-col h3 { font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+.compare-col canvas { width: 100%; border-radius: var(--radius-sm); display: block; }
+#compare-close { margin-top: 12px; }
+
+/* Model number panel */
+.model-section { padding: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.model-label { font-size: 11px; color: var(--text3); font-weight: 500; margin-bottom: 6px; }
+.model-row { display: flex; gap: 6px; }
+.model-row input { flex: 1; height: 34px; border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 0 10px; font-family: inherit; font-size: 13px; color: var(--text); background: var(--surface); outline: none; }
+.model-row input:focus { border-color: var(--accent); }
+.model-row .btn { flex-shrink: 0; font-size: 12px; padding: 0 10px; }
+.model-result { margin-top: 8px; font-size: 12px; color: var(--text2); background: var(--surface2); border-radius: var(--radius-sm); padding: 8px 10px; display: none; }
+
+/* file input */
+input[type=file] { display: none; }
+
+/* Custom texture upload */
+.custom-upload-area { padding: 10px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.custom-upload-btn { width: 100%; height: 36px; border: 1.5px dashed var(--border2); border-radius: var(--radius-sm); background: var(--surface2); color: var(--text2); font-family: inherit; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s; }
+.custom-upload-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.custom-upload-btn svg { width: 14px; height: 14px; }
+.mat-swatch img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mat-del { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: rgba(200,64,64,0.85); color: #fff; font-size: 9px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.12s; line-height: 1; }
+.mat-swatch:hover .mat-del { opacity: 1; }
+
+/* Tooltip */
+.tt { position: relative; }
+.tt::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 4px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+.tt:hover::after { opacity: 1; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 220px; }
+  .brand { font-size: 13px; }
+  .btn { padding: 0 10px; font-size: 12px; }
+  .hide-mobile { display: none !important; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <div class="brand">🏠 Reform Vision</div>
+    <div class="tool-sep"></div>
+    <button class="btn" id="openBtn" onclick="document.getElementById('fileInput').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      写真を開く
+    </button>
+    <input type="file" id="fileInput" accept="image/*">
+    <input type="file" id="texFileInput" accept="image/*" multiple>
+    <div class="tool-sep hide-mobile"></div>
+    <button class="btn tt" id="undoBtn" disabled data-tip="元に戻す" onclick="undoLast()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h10c4.4 0 8 3.6 8 8v0M3 10l5-5M3 10l5 5"/></svg>
+      <span class="hide-mobile">元に戻す</span>
+    </button>
+    <button class="btn tt danger" id="resetBtn" disabled data-tip="すべてリセット" onclick="resetAll()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+      <span class="hide-mobile">リセット</span>
+    </button>
+    <button class="btn tt hide-mobile" id="compareBtn" disabled data-tip="ビフォーアフター比較" onclick="showCompare()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="18" rx="1"/><rect x="13" y="3" width="8" height="18" rx="1"/></svg>
+      比較
+    </button>
+    <button class="btn primary ml-auto" id="saveBtn" onclick="saveImage()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      保存
+    </button>
+  </div>
+
+  <div id="body">
+    <!-- Canvas area -->
+    <div id="canvas-area">
+      <div id="canvas-wrap">
+        <div id="drop-zone" id="dropZone">
+          <div class="dz-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6B6B68" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          </div>
+          <p>施工前の写真をアップロード</p>
+          <span>クリック、またはドラッグ＆ドロップ</span>
+        </div>
+        <canvas id="main-canvas"></canvas>
+        <canvas id="overlay-canvas"></canvas>
+      </div>
+      <div id="status-bar">
+        <span id="mode-badge"></span>
+        <span id="status-text">写真をアップロードして開始</span>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div class="sb-tabs">
+        <button class="sb-tab active" onclick="switchSbTab('materials', this)">素材</button>
+        <button class="sb-tab" onclick="switchSbTab('ai', this)">AI分析</button>
+        <button class="sb-tab" onclick="switchSbTab('history', this)">履歴</button>
+      </div>
+
+      <!-- Materials panel -->
+      <div class="sb-panel active" id="panel-materials">
+        <div class="model-section">
+          <div class="model-label">品番検索（TOTO / LIXIL / サンゲツ 等）</div>
+          <div class="model-row">
+            <input type="text" id="modelInput" placeholder="例：BB-117, CF-9420" onkeydown="if(event.key==='Enter') lookupModel()">
+            <button class="btn" onclick="lookupModel()">検索</button>
+          </div>
+          <div class="model-result" id="modelResult"></div>
+        </div>
+        <div class="cat-bar" id="catBar"></div>
+        <div class="custom-upload-area">
+          <button class="custom-upload-btn" onclick="document.getElementById('texFileInput').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            カタログ画像から素材を追加
+          </button>
+        </div>
+        <div class="mat-grid" id="matGrid"></div>
+        <div class="sel-area">
+          <div class="sel-label">選択中の素材</div>
+          <div class="sel-card">
+            <div class="sel-name" id="selName">— 未選択 —</div>
+            <div class="sel-hint" id="selHint">左のカタログから素材を選んでください</div>
+          </div>
+          <div class="opacity-row">
+            <label>透過</label>
+            <input type="range" min="10" max="100" value="80" id="opacitySlider" oninput="updateOpacity(this.value)">
+            <span class="opacity-val" id="opacityVal">80%</span>
+          </div>
+        </div>
+        <div class="apply-area">
+          <button class="btn primary btn-block" id="applyHint" onclick="startDrawMode()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            範囲を選択して適用
+          </button>
+        </div>
+      </div>
+
+      <!-- AI panel -->
+      <div class="sb-panel" id="panel-ai">
+        <div class="ai-panel-inner">
+          <div class="ai-info">施工後のイメージに対して、お客様向けの提案コメントを自動生成します。</div>
+          <div class="ai-result-area">
+            <div class="ai-result-box placeholder" id="aiResultBox">素材を適用した後に「コメント生成」を押してください。</div>
+          </div>
+          <div class="ai-actions">
+            <button class="btn primary btn-block" onclick="runAI()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+              提案コメントを生成
+            </button>
+            <button class="btn btn-block" onclick="copyAIResult()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              コメントをコピー
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- History panel -->
+      <div class="sb-panel" id="panel-history">
+        <div class="history-panel-inner" id="historyList">
+          <div class="empty-history">まだ履歴がありません</div>
+        </div>
+        <div style="padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;">
+          <button class="btn danger btn-block" onclick="resetAll()">すべてクリア</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Before/After compare overlay -->
+<div id="compare-overlay">
+  <div id="compare-inner">
+    <h2>ビフォーアフター比較</h2>
+    <div class="compare-grid">
+      <div class="compare-col">
+        <h3>施工前 (Before)</h3>
+        <canvas id="before-canvas"></canvas>
+      </div>
+      <div class="compare-col">
+        <h3>施工後イメージ (After)</h3>
+        <canvas id="after-canvas"></canvas>
+      </div>
+    </div>
+    <button class="btn btn-block" id="compare-close" onclick="hideCompare()">閉じる</button>
+  </div>
+</div>
+
+<script>
+// ===== State =====
+let originalImg = null;
+let layers = [];
+let selectedMat = null;
+let opacity = 0.80;
+let drawMode = false;
+let polyPoints = [];       // polygon vertices [{x,y}, ...]
+let currentCat = '壁紙';
+let aiResultText = '';
+let customIdCounter = 0;
+
+const mainCanvas = document.getElementById('main-canvas');
+const ctx = mainCanvas.getContext('2d');
+const overlayCanvas = document.getElementById('overlay-canvas');
+const octx = overlayCanvas.getContext('2d');
+
+// ===== Material Catalog =====
+const catalog = {
+  '壁紙': [
+    { id:'w1', name:'ピュアホワイト', maker:'サンゲツ', type:'solid', c:'#FAF9F6' },
+    { id:'w2', name:'ナチュラルベージュ', maker:'サンゲツ', type:'solid', c:'#EDE3D2' },
+    { id:'w3', name:'ライトグレー', maker:'リリカラ', type:'solid', c:'#D4D2CE' },
+    { id:'w4', name:'ミストグレー', maker:'リリカラ', type:'solid', c:'#B8B6B2' },
+    { id:'w5', name:'ストーン', maker:'シンコール', type:'solid', c:'#C8C0B4' },
+    { id:'w6', name:'アイスブルー', maker:'サンゲツ', type:'solid', c:'#C8D8E4' },
+    { id:'w7', name:'セージグリーン', maker:'リリカラ', type:'solid', c:'#A8BCA8' },
+    { id:'w8', name:'ダスキーピンク', maker:'シンコール', type:'solid', c:'#D4B0B0' },
+    { id:'w9', name:'モルタル調', maker:'サンゲツ', type:'solid', c:'#9A9894' },
+    { id:'w10', name:'木目クロス', maker:'サンゲツ', type:'woodwall', c1:'#C8A070', c2:'#B08858' },
+    { id:'w11', name:'縦ストライプ（ベージュ）', maker:'リリカラ', type:'stripev', c1:'#E8DDD0', c2:'#D8CCBC' },
+    { id:'w12', name:'レンガ調', maker:'サンゲツ', type:'brick', c1:'#E0A888', c2:'#C88868' },
+    { id:'w13', name:'タイル調（白）', maker:'シンコール', type:'walltile', c1:'#F0EEE8', c2:'#D4D0C8' },
+    { id:'w14', name:'ネイビー', maker:'リリカラ', type:'solid', c:'#2C3E5A' },
+    { id:'w15', name:'チャコール', maker:'サンゲツ', type:'solid', c:'#484844' },
+  ],
+  '床材': [
+    { id:'f1', name:'ライトオーク', maker:'大建工業', type:'wood', c1:'#D4B070', c2:'#C09A58' },
+    { id:'f2', name:'ナチュラルオーク', maker:'大建工業', type:'wood', c1:'#E0C890', c2:'#CEB070' },
+    { id:'f3', name:'ダークウォールナット', maker:'大建工業', type:'wood', c1:'#6A4228', c2:'#58321A' },
+    { id:'f4', name:'グレーオーク', maker:'東リ', type:'wood', c1:'#989890', c2:'#888880' },
+    { id:'f5', name:'ホワイトオーク', maker:'東リ', type:'wood', c1:'#EEE4D0', c2:'#DDD0B8' },
+    { id:'f6', name:'ブラックウォールナット', maker:'東リ', type:'wood', c1:'#38281A', c2:'#281810' },
+    { id:'f7', name:'ホワイトタイル', maker:'東リ', type:'tile', c1:'#F2F0EA', c2:'#D8D4CC' },
+    { id:'f8', name:'グレータイル', maker:'東リ', type:'tile', c1:'#B8B4B0', c2:'#9C9894' },
+    { id:'f9', name:'ダークタイル', maker:'東リ', type:'tile', c1:'#5A5856', c2:'#444240' },
+    { id:'f10', name:'テラコッタ', maker:'東リ', type:'tile', c1:'#C87850', c2:'#B06038' },
+    { id:'f11', name:'ベージュCF', maker:'フクビ', type:'solid', c:'#E0D0B8' },
+    { id:'f12', name:'グレーCF', maker:'フクビ', type:'solid', c:'#B0ACAA' },
+    { id:'f13', name:'ブラックCF', maker:'フクビ', type:'solid', c:'#303030' },
+    { id:'f14', name:'ライトグレーCF', maker:'フクビ', type:'solid', c:'#D0CCC8' },
+    { id:'f15', name:'カーペット（グレー）', maker:'東リ', type:'carpet', c:'#8090A8' },
+  ],
+  '塗料': [
+    { id:'p1', name:'ピュアホワイト', maker:'FARROW&BALL', type:'solid', c:'#F8F8F4' },
+    { id:'p2', name:'クリームホワイト', maker:'FARROW&BALL', type:'solid', c:'#F0E8D8' },
+    { id:'p3', name:'ライトグレー', maker:'関西ペイント', type:'solid', c:'#C8C8C4' },
+    { id:'p4', name:'ミッドグレー', maker:'関西ペイント', type:'solid', c:'#909090' },
+    { id:'p5', name:'チャコール', maker:'関西ペイント', type:'solid', c:'#484848' },
+    { id:'p6', name:'ブラック', maker:'関西ペイント', type:'solid', c:'#1A1A1A' },
+    { id:'p7', name:'ネイビー', maker:'FARROW&BALL', type:'solid', c:'#2A3C60' },
+    { id:'p8', name:'テール', maker:'FARROW&BALL', type:'solid', c:'#2A6060' },
+    { id:'p9', name:'フォレストグリーン', maker:'関西ペイント', type:'solid', c:'#385A38' },
+    { id:'p10', name:'セージグリーン', maker:'関西ペイント', type:'solid', c:'#7A9A7A' },
+    { id:'p11', name:'マスタード', maker:'関西ペイント', type:'solid', c:'#C89028' },
+    { id:'p12', name:'テラコッタ', maker:'関西ペイント', type:'solid', c:'#C47048' },
+    { id:'p13', name:'ダスティピンク', maker:'FARROW&BALL', type:'solid', c:'#C49098' },
+    { id:'p14', name:'ラベンダー', maker:'関西ペイント', type:'solid', c:'#9090C0' },
+    { id:'p15', name:'スカイブルー', maker:'関西ペイント', type:'solid', c:'#88B0D0' },
+  ],
+};
+
+// ===== Draw swatch pattern =====
+function drawSwatch(swCtx, mat, size) {
+  swCtx.clearRect(0, 0, size, size);
+  const { type } = mat;
+  if (type === 'image') {
+    // Image-based texture: draw scaled to fill swatch
+    if (mat.img && mat.img.complete) {
+      swCtx.drawImage(mat.img, 0, 0, size, size);
+    }
+    return;
+  }
+  if (type === 'solid') {
+    swCtx.fillStyle = mat.c; swCtx.fillRect(0, 0, size, size);
+  } else if (type === 'wood') {
+    swCtx.fillStyle = mat.c1; swCtx.fillRect(0, 0, size, size);
+    for (let i = 0; i < size; i += 5) {
+      swCtx.strokeStyle = mat.c2; swCtx.lineWidth = 0.8;
+      swCtx.beginPath(); swCtx.moveTo(0, i); swCtx.lineTo(size, i + Math.sin(i*0.4)*1.5); swCtx.stroke();
+    }
+  } else if (type === 'woodwall') {
+    swCtx.fillStyle = mat.c1; swCtx.fillRect(0, 0, size, size);
+    for (let i = 0; i < size; i += 6) {
+      swCtx.strokeStyle = mat.c2; swCtx.lineWidth = 0.8;
+      swCtx.beginPath(); swCtx.moveTo(i, 0); swCtx.lineTo(i + Math.sin(i*0.4)*1.5, size); swCtx.stroke();
+    }
+  } else if (type === 'tile' || type === 'walltile') {
+    swCtx.fillStyle = mat.c1; swCtx.fillRect(0, 0, size, size);
+    const ts = size / 3;
+    swCtx.strokeStyle = mat.c2; swCtx.lineWidth = 1.5;
+    for (let x = ts; x < size; x += ts) { swCtx.beginPath(); swCtx.moveTo(x,0); swCtx.lineTo(x,size); swCtx.stroke(); }
+    for (let y = ts; y < size; y += ts) { swCtx.beginPath(); swCtx.moveTo(0,y); swCtx.lineTo(size,y); swCtx.stroke(); }
+  } else if (type === 'brick') {
+    swCtx.fillStyle = mat.c1; swCtx.fillRect(0, 0, size, size);
+    swCtx.fillStyle = mat.c2;
+    const bh = size/4;
+    for (let row=0; row<4; row++) {
+      const off = row%2===0?0:size/4;
+      swCtx.fillRect(off+1, row*bh+1, size/2-2, bh-2);
+      swCtx.fillRect(off+size/2+1, row*bh+1, size/2-2, bh-2);
+    }
+  } else if (type === 'stripev') {
+    const sw = Math.max(4, size/8);
+    for (let i=0; i<size; i+=sw*2) {
+      swCtx.fillStyle = mat.c1; swCtx.fillRect(i,0,sw,size);
+      swCtx.fillStyle = mat.c2; swCtx.fillRect(i+sw,0,sw,size);
+    }
+  } else if (type === 'carpet') {
+    swCtx.fillStyle = mat.c; swCtx.fillRect(0,0,size,size);
+    for (let i=0;i<40;i++) {
+      const x=Math.random()*size, y=Math.random()*size;
+      swCtx.strokeStyle='rgba(255,255,255,0.2)'; swCtx.lineWidth=0.5;
+      swCtx.beginPath(); swCtx.moveTo(x,y); swCtx.lineTo(x+2,y+2); swCtx.stroke();
+    }
+  }
+}
+
+// ===== Draw material on main canvas =====
+function applyMaterial(ctx, mat, x, y, w, h) {
+  const { type } = mat;
+  if (type === 'image') {
+    // Tile the texture image across the area
+    if (mat.img && mat.img.complete) {
+      const tileW = mat.tileSize || 120;
+      const tileH = tileW * (mat.img.height / mat.img.width);
+      for (let ty = y; ty < y + h; ty += tileH) {
+        for (let tx = x; tx < x + w; tx += tileW) {
+          const dw = Math.min(tileW, x + w - tx);
+          const dh = Math.min(tileH, y + h - ty);
+          const sw = (dw / tileW) * mat.img.width;
+          const sh = (dh / tileH) * mat.img.height;
+          ctx.drawImage(mat.img, 0, 0, sw, sh, tx, ty, dw, dh);
+        }
+      }
+    }
+    return;
+  }
+  if (type === 'solid') {
+    ctx.fillStyle = mat.c; ctx.fillRect(x,y,w,h);
+  } else if (type === 'carpet') {
+    ctx.fillStyle = mat.c; ctx.fillRect(x,y,w,h);
+    for (let i=0;i<300;i++) {
+      const rx=x+Math.random()*w, ry=y+Math.random()*h;
+      ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=0.6;
+      ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx+3,ry+3); ctx.stroke();
+    }
+  } else if (type === 'wood') {
+    ctx.fillStyle = mat.c1; ctx.fillRect(x,y,w,h);
+    const sp = Math.max(4, h/18);
+    for (let i=0;i<h;i+=sp) {
+      ctx.strokeStyle=mat.c2; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x,y+i); ctx.lineTo(x+w,y+i+Math.sin(i*0.2)*3); ctx.stroke();
+    }
+  } else if (type === 'woodwall') {
+    ctx.fillStyle = mat.c1; ctx.fillRect(x,y,w,h);
+    const sp = Math.max(4, w/18);
+    for (let i=0;i<w;i+=sp) {
+      ctx.strokeStyle=mat.c2; ctx.lineWidth=0.8;
+      ctx.beginPath(); ctx.moveTo(x+i,y); ctx.lineTo(x+i+Math.sin(i*0.3)*3,y+h); ctx.stroke();
+    }
+  } else if (type === 'tile' || type === 'walltile') {
+    ctx.fillStyle = mat.c1; ctx.fillRect(x,y,w,h);
+    const ts = Math.max(16, Math.min(w,h)/8);
+    ctx.strokeStyle=mat.c2; ctx.lineWidth=2;
+    for (let tx=x;tx<=x+w;tx+=ts) { ctx.beginPath(); ctx.moveTo(tx,y); ctx.lineTo(tx,y+h); ctx.stroke(); }
+    for (let ty=y;ty<=y+h;ty+=ts) { ctx.beginPath(); ctx.moveTo(x,ty); ctx.lineTo(x+w,ty); ctx.stroke(); }
+  } else if (type === 'brick') {
+    ctx.fillStyle = mat.c1; ctx.fillRect(x,y,w,h);
+    ctx.fillStyle = mat.c2;
+    const bh=22, bw=60;
+    for (let row=0; row*bh<h; row++) {
+      const off = row%2===0?0:bw/2;
+      for (let col=-bw;col<w+bw;col+=bw) {
+        ctx.fillRect(x+col+off+1, y+row*bh+1, bw-2, bh-2);
+      }
+    }
+  } else if (type === 'stripev') {
+    const sw = Math.max(6, w/24);
+    for (let i=0;i<w;i+=sw*2) {
+      ctx.fillStyle=mat.c1; ctx.fillRect(x+i,y,sw,h);
+      ctx.fillStyle=mat.c2; ctx.fillRect(x+i+sw,y,sw,h);
+    }
+  }
+}
+
+// ===== Redraw =====
+function redraw() {
+  if (!originalImg) return;
+  ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+  ctx.drawImage(originalImg, 0, 0, mainCanvas.width, mainCanvas.height);
+  layers.forEach(layer => {
+    ctx.save();
+    ctx.globalAlpha = layer.opacity;
+    if (layer.poly) {
+      // Polygon layer: clip to polygon, then fill material in bounding box
+      const pts = layer.poly;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.clip();
+      applyMaterial(ctx, layer.mat, layer.x, layer.y, layer.w, layer.h);
+    } else {
+      applyMaterial(ctx, layer.mat, layer.x, layer.y, layer.w, layer.h);
+    }
+    ctx.restore();
+  });
+}
+
+// ===== Build UI =====
+function buildCatBar() {
+  const bar = document.getElementById('catBar');
+  bar.innerHTML = '';
+  Object.keys(catalog).forEach(cat => {
+    const btn = document.createElement('button');
+    btn.className = 'cat-btn' + (cat === currentCat ? ' active' : '');
+    btn.textContent = cat;
+    btn.onclick = () => { currentCat = cat; document.querySelectorAll('.cat-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); buildMatGrid(); };
+    bar.appendChild(btn);
+  });
+}
+
+function buildMatGrid() {
+  const grid = document.getElementById('matGrid');
+  grid.innerHTML = '';
+  catalog[currentCat].forEach(mat => {
+    const item = document.createElement('div');
+    item.className = 'mat-item';
+    const sw = document.createElement('div');
+    sw.className = 'mat-swatch' + (selectedMat && selectedMat.id === mat.id ? ' selected' : '');
+    if (mat.type === 'image' && mat.img) {
+      const img = document.createElement('img');
+      img.src = mat.img.src;
+      img.alt = mat.name;
+      sw.appendChild(img);
+    } else {
+      const sc = document.createElement('canvas');
+      sc.width = 60; sc.height = 60;
+      drawSwatch(sc.getContext('2d'), mat, 60);
+      sw.appendChild(sc);
+    }
+    // Delete button for custom materials
+    if (mat.custom) {
+      const del = document.createElement('button');
+      del.className = 'mat-del';
+      del.textContent = '×';
+      del.onclick = (e) => { e.stopPropagation(); removeCustomMat(mat.id); };
+      sw.appendChild(del);
+    }
+    sw.onclick = () => selectMat(mat);
+    const lbl = document.createElement('div');
+    lbl.className = 'mat-label';
+    lbl.textContent = mat.name;
+    item.appendChild(sw); item.appendChild(lbl);
+    grid.appendChild(item);
+  });
+}
+
+function selectMat(mat) {
+  selectedMat = mat;
+  document.querySelectorAll('.mat-swatch').forEach(s=>s.classList.remove('selected'));
+  const items = document.querySelectorAll('.mat-item');
+  const allMats = catalog[currentCat];
+  const idx = allMats.findIndex(m=>m.id===mat.id);
+  if (idx >= 0) items[idx].querySelector('.mat-swatch').classList.add('selected');
+  document.getElementById('selName').textContent = mat.name;
+  document.getElementById('selHint').textContent = mat.maker + ' ／ ' + currentCat;
+  setStatus('「' + mat.name + '」を選択。「範囲を選択して適用」を押してクリックで範囲を指定してください。');
+}
+
+// ===== File Load =====
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => loadImage(img);
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  this.value = '';
+});
+
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = ev => { const img = new Image(); img.onload = () => loadImage(img); img.src = ev.target.result; };
+  reader.readAsDataURL(file);
+});
+dropZone.addEventListener('click', () => document.getElementById('fileInput').click());
+
+function loadImage(img) {
+  originalImg = img;
+  layers = [];
+  const wrap = document.getElementById('canvas-wrap');
+  const maxW = wrap.clientWidth - 32;
+  const maxH = wrap.clientHeight - 16;
+  const ratio = Math.min(maxW / img.width, maxH / img.height, 1);
+  mainCanvas.width = Math.round(img.width * ratio);
+  mainCanvas.height = Math.round(img.height * ratio);
+  overlayCanvas.width = mainCanvas.width;
+  overlayCanvas.height = mainCanvas.height;
+  overlayCanvas.style.position = 'absolute';
+  // Position overlay on top of main canvas
+  function syncOverlay() {
+    const r = mainCanvas.getBoundingClientRect();
+    const wr = document.getElementById('canvas-wrap').getBoundingClientRect();
+    overlayCanvas.style.left = (r.left - wr.left) + 'px';
+    overlayCanvas.style.top = (r.top - wr.top) + 'px';
+    overlayCanvas.style.width = r.width + 'px';
+    overlayCanvas.style.height = r.height + 'px';
+  }
+  syncOverlay();
+  window.addEventListener('resize', syncOverlay);
+  redraw();
+  dropZone.style.display = 'none';
+  mainCanvas.style.display = 'block';
+  document.getElementById('resetBtn').disabled = false;
+  document.getElementById('compareBtn').disabled = false;
+  setStatus('素材を選んでクリックで範囲を選択してください');
+  updateHistoryUI();
+}
+
+// ===== Draw mode (polygon click selection) =====
+function startDrawMode() {
+  if (!originalImg) { setStatus('先に写真をアップロードしてください'); return; }
+  if (!selectedMat) { setStatus('先に素材を選択してください'); return; }
+  drawMode = true;
+  polyPoints = [];
+  mainCanvas.style.cursor = 'crosshair';
+  document.getElementById('mode-badge').textContent = '✏️ 範囲選択モード';
+  document.getElementById('mode-badge').style.display = 'inline';
+  document.getElementById('applyHint').textContent = '選択をキャンセル';
+  document.getElementById('applyHint').onclick = cancelDraw;
+  setStatus('クリックで頂点を追加。始点付近をクリック or ダブルクリックで確定');
+}
+
+function cancelDraw() {
+  drawMode = false;
+  polyPoints = [];
+  mainCanvas.style.cursor = 'default';
+  document.getElementById('mode-badge').style.display = 'none';
+  document.getElementById('applyHint').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> 範囲を選択して適用';
+  document.getElementById('applyHint').onclick = startDrawMode;
+  redraw();
+  drawOverlay();
+  setStatus('素材を選んで範囲を選択してください');
+}
+
+function finishPoly() {
+  if (polyPoints.length < 3) { cancelDraw(); return; }
+  // Compute bounding box
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  polyPoints.forEach(p => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
+  const layer = {
+    mat: selectedMat, poly: [...polyPoints],
+    x: minX, y: minY, w: maxX - minX, h: maxY - minY,
+    opacity, cat: currentCat, ts: Date.now()
+  };
+  layers.push(layer);
+  polyPoints = [];
+  drawMode = false;
+  mainCanvas.style.cursor = 'default';
+  document.getElementById('mode-badge').style.display = 'none';
+  document.getElementById('undoBtn').disabled = false;
+  document.getElementById('applyHint').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> 範囲を選択して適用';
+  document.getElementById('applyHint').onclick = startDrawMode;
+  redraw();
+  drawOverlay();
+  setStatus('「' + selectedMat.name + '」を適用しました。続けて他の範囲も選択できます。');
+  updateHistoryUI();
+}
+
+function getCanvasPos(e) {
+  const rect = mainCanvas.getBoundingClientRect();
+  const scaleX = mainCanvas.width / rect.width;
+  const scaleY = mainCanvas.height / rect.height;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+}
+
+// Draw overlay showing polygon in progress
+function drawOverlay() {
+  octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  if (!drawMode || polyPoints.length === 0) return;
+  const pts = polyPoints;
+  // Draw filled preview
+  if (pts.length >= 3 && selectedMat) {
+    octx.save();
+    octx.beginPath();
+    octx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) octx.lineTo(pts[i].x, pts[i].y);
+    octx.closePath();
+    octx.globalAlpha = 0.25;
+    octx.fillStyle = selectedMat.c || selectedMat.c1 || '#2C5F4A';
+    octx.fill();
+    octx.restore();
+  }
+  // Draw lines
+  octx.beginPath();
+  octx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) octx.lineTo(pts[i].x, pts[i].y);
+  octx.strokeStyle = '#2C5F4A';
+  octx.lineWidth = 2;
+  octx.setLineDash([6, 3]);
+  octx.stroke();
+  octx.setLineDash([]);
+  // Draw vertices
+  pts.forEach((p, i) => {
+    octx.beginPath();
+    octx.arc(p.x, p.y, i === 0 ? 7 : 4, 0, Math.PI * 2);
+    octx.fillStyle = i === 0 ? '#2C5F4A' : '#fff';
+    octx.fill();
+    octx.strokeStyle = '#2C5F4A';
+    octx.lineWidth = 2;
+    octx.stroke();
+  });
+  // Label on first point
+  if (pts.length >= 3) {
+    octx.font = '11px sans-serif';
+    octx.fillStyle = '#2C5F4A';
+    octx.fillText('始点クリックで確定', pts[0].x + 10, pts[0].y - 8);
+  }
+}
+
+// Click to add vertex
+mainCanvas.addEventListener('click', function(e) {
+  if (!drawMode || !selectedMat) return;
+  e.preventDefault();
+  const pos = getCanvasPos(e);
+  // Check if clicking near the first point to close
+  if (polyPoints.length >= 3) {
+    const first = polyPoints[0];
+    const dist = Math.sqrt((pos.x - first.x) ** 2 + (pos.y - first.y) ** 2);
+    if (dist < 15) { finishPoly(); return; }
+  }
+  polyPoints.push(pos);
+  drawOverlay();
+  setStatus('頂点 ' + polyPoints.length + ' 個目を追加（あと' + Math.max(0, 3 - polyPoints.length) + '個以上で確定可能）');
+});
+
+// Double-click to finish
+mainCanvas.addEventListener('dblclick', function(e) {
+  if (!drawMode || polyPoints.length < 3) return;
+  e.preventDefault();
+  // Remove the extra point added by the second click of dblclick
+  polyPoints.pop();
+  finishPoly();
+});
+
+// Mouse move: show line from last point to cursor
+mainCanvas.addEventListener('mousemove', function(e) {
+  if (!drawMode || polyPoints.length === 0) return;
+  const pos = getCanvasPos(e);
+  drawOverlay();
+  // Draw line from last point to cursor
+  const last = polyPoints[polyPoints.length - 1];
+  octx.beginPath();
+  octx.moveTo(last.x, last.y);
+  octx.lineTo(pos.x, pos.y);
+  octx.strokeStyle = 'rgba(44,95,74,0.5)';
+  octx.lineWidth = 1.5;
+  octx.setLineDash([4, 4]);
+  octx.stroke();
+  octx.setLineDash([]);
+  // Highlight first point if close
+  if (polyPoints.length >= 3) {
+    const first = polyPoints[0];
+    const dist = Math.sqrt((pos.x - first.x) ** 2 + (pos.y - first.y) ** 2);
+    if (dist < 15) {
+      octx.beginPath();
+      octx.arc(first.x, first.y, 10, 0, Math.PI * 2);
+      octx.strokeStyle = '#2C5F4A';
+      octx.lineWidth = 2.5;
+      octx.stroke();
+    }
+  }
+});
+
+// Touch support
+mainCanvas.addEventListener('touchstart', function(e) {
+  if (!drawMode || !selectedMat) return;
+  e.preventDefault();
+  const pos = getCanvasPos(e);
+  if (polyPoints.length >= 3) {
+    const first = polyPoints[0];
+    const dist = Math.sqrt((pos.x - first.x) ** 2 + (pos.y - first.y) ** 2);
+    if (dist < 25) { finishPoly(); return; }
+  }
+  polyPoints.push(pos);
+  drawOverlay();
+  setStatus('頂点 ' + polyPoints.length + ' 個目を追加');
+}, { passive: false });
+
+// Escape key to cancel
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && drawMode) cancelDraw();
+  // Enter to finish if enough points
+  if (e.key === 'Enter' && drawMode && polyPoints.length >= 3) finishPoly();
+});
+
+// ===== Controls =====
+function updateOpacity(val) {
+  opacity = val / 100;
+  document.getElementById('opacityVal').textContent = val + '%';
+}
+
+function undoLast() {
+  if (!layers.length) return;
+  layers.pop();
+  redraw();
+  if (!layers.length) document.getElementById('undoBtn').disabled = true;
+  updateHistoryUI();
+  setStatus('元に戻しました');
+}
+
+function resetAll() {
+  if (!originalImg) return;
+  layers = [];
+  redraw();
+  document.getElementById('undoBtn').disabled = true;
+  updateHistoryUI();
+  setStatus('リセットしました');
+}
+
+function saveImage() {
+  if (!originalImg) { setStatus('写真をアップロードしてください'); return; }
+  const link = document.createElement('a');
+  link.download = 'reform-after-' + new Date().toISOString().slice(0,10) + '.png';
+  link.href = mainCanvas.toDataURL('image/png');
+  link.click();
+  setStatus('保存しました');
+}
+
+// ===== History UI =====
+function updateHistoryUI() {
+  const list = document.getElementById('historyList');
+  if (!layers.length) { list.innerHTML = '<div class="empty-history">まだ適用された素材がありません</div>'; return; }
+  list.innerHTML = '';
+  [...layers].reverse().forEach((layer, i) => {
+    const realIdx = layers.length - 1 - i;
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    const swWrap = document.createElement('div'); swWrap.className = 'history-swatch';
+    if (layer.mat.type === 'image' && layer.mat.img) {
+      const img = document.createElement('img');
+      img.src = layer.mat.img.src;
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:4px;';
+      swWrap.appendChild(img);
+    } else {
+      const sc = document.createElement('canvas'); sc.width = 36; sc.height = 36;
+      drawSwatch(sc.getContext('2d'), layer.mat, 36);
+      swWrap.appendChild(sc);
+    }
+    const info = document.createElement('div'); info.className = 'history-info';
+    info.innerHTML = '<div class="history-name">' + layer.mat.name + '</div><div class="history-detail">' + layer.mat.maker + ' | 透過: ' + Math.round(layer.opacity*100) + '%</div>';
+    const del = document.createElement('button'); del.className = 'history-del'; del.textContent = '×';
+    del.onclick = () => { layers.splice(realIdx, 1); redraw(); updateHistoryUI(); if (!layers.length) document.getElementById('undoBtn').disabled = true; };
+    item.appendChild(swWrap); item.appendChild(info); item.appendChild(del);
+    list.appendChild(item);
+  });
+}
+
+// ===== Sidebar tabs =====
+function switchSbTab(tab, el) {
+  document.querySelectorAll('.sb-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.sb-panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-' + tab).classList.add('active');
+}
+
+// ===== Status =====
+function setStatus(msg) {
+  document.getElementById('status-text').textContent = msg;
+}
+
+// ===== Before/After Compare =====
+function showCompare() {
+  if (!originalImg) return;
+  const overlay = document.getElementById('compare-overlay');
+  overlay.style.display = 'flex';
+  const bc = document.getElementById('before-canvas');
+  const ac = document.getElementById('after-canvas');
+  const ratio = Math.min(280/originalImg.width, 200/originalImg.height);
+  const w = Math.round(originalImg.width * ratio);
+  const h = Math.round(originalImg.height * ratio);
+  bc.width = w; bc.height = h; ac.width = w; ac.height = h;
+  bc.getContext('2d').drawImage(originalImg, 0, 0, w, h);
+  const ac2 = ac.getContext('2d');
+  ac2.drawImage(originalImg, 0, 0, w, h);
+  const scaleX = w / mainCanvas.width;
+  const scaleY = h / mainCanvas.height;
+  layers.forEach(layer => {
+    ac2.save(); ac2.globalAlpha = layer.opacity;
+    if (layer.poly) {
+      ac2.beginPath();
+      ac2.moveTo(layer.poly[0].x * scaleX, layer.poly[0].y * scaleY);
+      for (let i = 1; i < layer.poly.length; i++) ac2.lineTo(layer.poly[i].x * scaleX, layer.poly[i].y * scaleY);
+      ac2.closePath();
+      ac2.clip();
+    }
+    applyMaterial(ac2, layer.mat, layer.x * scaleX, layer.y * scaleY, layer.w * scaleX, layer.h * scaleY);
+    ac2.restore();
+  });
+}
+function hideCompare() {
+  document.getElementById('compare-overlay').style.display = 'none';
+}
+document.getElementById('compare-overlay').addEventListener('click', function(e) {
+  if (e.target === this) hideCompare();
+});
+
+// ===== AI Analysis =====
+async function runAI() {
+  if (!originalImg) { alert('写真をアップロードしてください'); return; }
+  const box = document.getElementById('aiResultBox');
+  box.classList.remove('placeholder');
+  if (!layers.length) { box.textContent = '素材を適用した後に実行してください。'; return; }
+  const matList = layers.map(l => l.mat.name + '（' + l.cat + '：' + l.mat.maker + '）').join('、');
+  const prompt = `あなたはリフォーム提案の専門アドバイザーです。
+以下の素材を使ったリフォーム提案について、オーナー様・入居者様への提案コメントを作成してください。
+
+適用した素材：${matList}
+
+以下の構成で日本語で作成してください：
+【仕上がりのイメージ】
+（2文程度で全体の雰囲気・印象を描写）
+
+【素材の特徴とメリット】
+（各素材の特長を箇条書きで2〜3点）
+
+【おすすめポイント】
+（どんなライフスタイルや用途に向いているか1〜2文）
+
+プロフェッショナルかつ温かみのある文体でお願いします。`;
+
+  box.innerHTML = '生成中<span class="ai-typing">...</span>';
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const text = data.content?.find(b => b.type === 'text')?.text || 'コメントを生成できませんでした。';
+    aiResultText = text;
+    box.textContent = text;
+  } catch (err) {
+    box.textContent = 'エラーが発生しました。もう一度お試しください。';
+  }
+}
+
+function copyAIResult() {
+  if (!aiResultText) { alert('先にコメントを生成してください'); return; }
+  navigator.clipboard.writeText(aiResultText).then(() => setStatus('コメントをコピーしました'));
+}
+
+// ===== Model number lookup =====
+async function lookupModel() {
+  const input = document.getElementById('modelInput').value.trim();
+  if (!input) return;
+  const result = document.getElementById('modelResult');
+  result.style.display = 'block';
+  result.textContent = '検索中...';
+
+  // Simple keyword match for demo
+  const lowerInput = input.toLowerCase();
+  let found = null;
+  for (const cat of Object.keys(catalog)) {
+    for (const mat of catalog[cat]) {
+      if (mat.id.toLowerCase().includes(lowerInput) || mat.name.toLowerCase().includes(lowerInput)) {
+        found = { mat, cat };
+        break;
+      }
+    }
+    if (found) break;
+  }
+
+  if (found) {
+    result.textContent = '✓ 見つかりました：' + found.mat.name + '（' + found.cat + '）';
+    currentCat = found.cat;
+    buildCatBar(); buildMatGrid(); selectMat(found.mat);
+  } else {
+    // AI lookup fallback
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          messages: [{ role: 'user', content: `リフォーム資材の品番「${input}」について教えてください。メーカー名、商品名、素材カテゴリ（壁紙/床材/塗料）、主な色・デザインの特徴を簡潔に1〜2文で回答してください。不明な場合はその旨を伝えてください。` }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.find(b => b.type === 'text')?.text || '情報を取得できませんでした。';
+      result.textContent = text;
+    } catch {
+      result.textContent = '該当する品番が見つかりませんでした。品番を確認してください。';
+    }
+  }
+}
+
+// ===== Custom texture upload =====
+document.getElementById('texFileInput').addEventListener('change', function(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  files.forEach(file => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        customIdCounter++;
+        const matName = file.name.replace(/\.[^.]+$/, '') || 'カスタム素材';
+        const mat = {
+          id: 'custom_' + customIdCounter,
+          name: matName,
+          maker: 'アップロード',
+          type: 'image',
+          img: img,
+          tileSize: 120,
+          custom: true
+        };
+        // Add to current category
+        catalog[currentCat].unshift(mat);
+        buildMatGrid();
+        selectMat(mat);
+        setStatus('「' + matName + '」をカタログに追加しました');
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  this.value = '';
+});
+
+function removeCustomMat(id) {
+  for (const cat of Object.keys(catalog)) {
+    const idx = catalog[cat].findIndex(m => m.id === id);
+    if (idx >= 0) {
+      catalog[cat].splice(idx, 1);
+      if (selectedMat && selectedMat.id === id) {
+        selectedMat = null;
+        document.getElementById('selName').textContent = '— 未選択 —';
+        document.getElementById('selHint').textContent = 'カタログから素材を選んでください';
+      }
+      buildMatGrid();
+      setStatus('カスタム素材を削除しました');
+      return;
+    }
+  }
+}
+
+// ===== Init =====
+buildCatBar();
+buildMatGrid();
+</script>
+</body>
+</html>
