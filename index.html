@@ -96,7 +96,13 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
 
 /* Apply button */
 .apply-area { padding: 10px 12px; flex-shrink: 0; }
+.apply-area .btn + .btn { margin-top: 6px; }
 .btn-block { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; border-radius: var(--radius-sm); }
+
+/* Blend mode selector */
+.blend-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.blend-row label { font-size: 11px; color: var(--text3); white-space: nowrap; }
+.blend-row select { flex: 1; height: 28px; border: 1px solid var(--border2); border-radius: var(--radius-sm); font-family: inherit; font-size: 11px; color: var(--text); background: var(--surface); padding: 0 6px; }
 
 /* AI panel */
 .ai-panel-inner { display: flex; flex-direction: column; gap: 0; height: 100%; overflow: hidden; }
@@ -265,6 +271,15 @@ input[type=file] { display: none; }
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             範囲を選択して適用
           </button>
+          <div class="blend-row">
+            <label>合成</label>
+            <select id="blendSelect" onchange="blendMode=this.value; if(layers.length) redraw();">
+              <option value="multiply">リアル（照明を反映）</option>
+              <option value="overlay">ナチュラル</option>
+              <option value="soft-light">ソフト</option>
+              <option value="normal">ベタ塗り</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -325,6 +340,7 @@ let originalImg = null;
 let layers = [];
 let selectedMat = null;
 let opacity = 0.80;
+let blendMode = 'multiply';
 let drawMode = false;
 let polyPoints = [];       // polygon vertices [{x,y}, ...]
 let currentCat = 'サンゲツ SP';
@@ -825,26 +841,71 @@ function applyMaterial(ctx, mat, x, y, w, h) {
   }
 }
 
-// ===== Redraw =====
+// ===== Redraw with blend mode compositing =====
 function redraw() {
   if (!originalImg) return;
-  ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
-  ctx.drawImage(originalImg, 0, 0, mainCanvas.width, mainCanvas.height);
+  const W = mainCanvas.width, H = mainCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(originalImg, 0, 0, W, H);
+
   layers.forEach(layer => {
-    ctx.save();
-    ctx.globalAlpha = layer.opacity;
-    if (layer.poly) {
-      // Polygon layer: clip to polygon, then fill material in bounding box
-      const pts = layer.poly;
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.closePath();
-      ctx.clip();
+    const mode = layer.blend || blendMode;
+    const pts = layer.poly;
+
+    if (mode === 'normal' || !pts) {
+      // Simple overlay (legacy behavior)
+      ctx.save();
+      ctx.globalAlpha = layer.opacity;
+      if (pts) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.closePath();
+        ctx.clip();
+      }
       applyMaterial(ctx, layer.mat, layer.x, layer.y, layer.w, layer.h);
-    } else {
-      applyMaterial(ctx, layer.mat, layer.x, layer.y, layer.w, layer.h);
+      ctx.restore();
+      return;
     }
+
+    // --- Realistic blend mode compositing ---
+    // 1) Render material to offscreen canvas
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = W; offCanvas.height = H;
+    const offCtx = offCanvas.getContext('2d');
+
+    // Draw original photo on offscreen (needed for blend base)
+    offCtx.drawImage(originalImg, 0, 0, W, H);
+
+    // Apply material with blend mode on top of the original
+    offCtx.save();
+    offCtx.globalCompositeOperation = mode;
+    offCtx.globalAlpha = 1;
+    applyMaterial(offCtx, layer.mat, layer.x, layer.y, layer.w, layer.h);
+    offCtx.restore();
+
+    // 2) Mix blended result with original using opacity
+    //    Create another offscreen for the mixed result
+    const mixCanvas = document.createElement('canvas');
+    mixCanvas.width = W; mixCanvas.height = H;
+    const mixCtx = mixCanvas.getContext('2d');
+
+    // Start with original
+    mixCtx.drawImage(originalImg, 0, 0, W, H);
+    // Overlay the blended version at desired opacity
+    mixCtx.globalAlpha = layer.opacity;
+    mixCtx.drawImage(offCanvas, 0, 0);
+    mixCtx.globalAlpha = 1;
+
+    // 3) Clip to polygon and draw onto main canvas
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.clip();
+    // Replace the region with blended result
+    ctx.drawImage(mixCanvas, 0, 0);
     ctx.restore();
   });
 }
@@ -1002,7 +1063,7 @@ function finishPoly() {
   const layer = {
     mat: selectedMat, poly: [...polyPoints],
     x: minX, y: minY, w: maxX - minX, h: maxY - minY,
-    opacity, cat: currentCat, ts: Date.now()
+    opacity, blend: blendMode, cat: currentCat, ts: Date.now()
   };
   layers.push(layer);
   polyPoints = [];
