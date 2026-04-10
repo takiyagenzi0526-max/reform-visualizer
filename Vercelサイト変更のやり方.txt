@@ -1,0 +1,25 @@
+
+
+
+
+
+Vercelサイト変更のやり方
+
+
+
+
+ターミナルで
+
+
+
+
+
+
+
+
+cd "C:\Users\yunag\OneDrive\Desktop\アクスト\ビフォアフアプリ"
+git add .
+git commit -m "更新内容"
+git push
+
+
