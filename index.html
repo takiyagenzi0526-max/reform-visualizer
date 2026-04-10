@@ -56,6 +56,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
 #drop-zone p { font-size: 15px; color: var(--text2); font-weight: 500; }
 #drop-zone span { font-size: 12px; color: var(--text3); }
 #main-canvas { display: none; max-width: 100%; max-height: 100%; border-radius: var(--radius-sm); box-shadow: 0 2px 16px rgba(0,0,0,0.12); cursor: crosshair; touch-action: none; }
+#main-canvas.brush-mode { cursor: none; }
 #overlay-canvas { position: absolute; pointer-events: none; border-radius: var(--radius-sm); }
 
 /* Status bar */
@@ -1553,8 +1554,11 @@ function setSelectMode(mode) {
   document.getElementById('etBrush').classList.toggle('active', mode === 'brush');
   document.getElementById('clickSettings').style.display = mode === 'click' ? '' : 'none';
   document.getElementById('brushSettings').style.display = mode === 'brush' ? '' : 'none';
+  mainCanvas.classList.toggle('brush-mode', mode === 'brush');
   if (mode === 'click') {
     document.getElementById('editHint').innerHTML = '写真をクリックで似た色を自動選択。<br>Shift+クリックで追加選択。';
+    octx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+    if (editMask) showEditMaskOverlay();
   } else {
     document.getElementById('editHint').innerHTML = 'ドラッグでなぞって範囲を選択します。<br>何度でも塗り足せます。';
   }
@@ -1806,6 +1810,61 @@ function brushInterpolate(x0, y0, x1, y1) {
 
 let lastBrushPos = null;
 
+// --- Draw brush cursor circle on overlay ---
+function drawBrushCursor(pos) {
+  const r = parseInt(document.getElementById('brushSize').value);
+  const rect = mainCanvas.getBoundingClientRect();
+  const scaleX = rect.width / mainCanvas.width;
+  // Draw on overlay canvas (already positioned on top of main)
+  showEditMaskOverlay();
+  // Draw cursor circle
+  octx.beginPath();
+  octx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+  octx.strokeStyle = 'rgba(255,255,255,0.9)';
+  octx.lineWidth = 2;
+  octx.stroke();
+  octx.beginPath();
+  octx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+  octx.strokeStyle = 'rgba(100,140,255,0.7)';
+  octx.lineWidth = 1;
+  octx.stroke();
+  // Crosshair in center
+  octx.strokeStyle = 'rgba(255,255,255,0.6)';
+  octx.lineWidth = 1;
+  octx.beginPath();
+  octx.moveTo(pos.x - 4, pos.y); octx.lineTo(pos.x + 4, pos.y);
+  octx.moveTo(pos.x, pos.y - 4); octx.lineTo(pos.x, pos.y + 4);
+  octx.stroke();
+}
+
+function finishBrushCount() {
+  if (editMask) {
+    let count = 0;
+    for (let i = 0; i < editMask.length; i++) if (editMask[i]) count++;
+    document.getElementById('editHint').innerHTML =
+      '<b>' + count.toLocaleString() + 'px 選択中</b><br>さらに塗り足せます。操作を選んでください。';
+    setStatus(count.toLocaleString() + 'px を選択しました');
+  }
+}
+
+// Mouse: brush cursor always visible when hovering in brush mode
+mainCanvas.addEventListener('mousemove', function(e) {
+  const editPanel = document.getElementById('panel-edit');
+  if (!editPanel.classList.contains('active')) return;
+  if (selectMode !== 'brush') return;
+  if (drawMode) return;
+
+  const pos = getCanvasPos(e);
+
+  if (brushPainting && lastBrushPos) {
+    brushInterpolate(lastBrushPos.x, lastBrushPos.y, pos.x, pos.y);
+    lastBrushPos = pos;
+  }
+
+  // Always show brush cursor (painting or just hovering)
+  drawBrushCursor(pos);
+});
+
 mainCanvas.addEventListener('mousedown', function(e) {
   const editPanel = document.getElementById('panel-edit');
   if (!editPanel.classList.contains('active')) return;
@@ -1818,30 +1877,21 @@ mainCanvas.addEventListener('mousedown', function(e) {
   const pos = getCanvasPos(e);
   brushStroke(pos.x, pos.y);
   lastBrushPos = pos;
-  showEditMaskOverlay();
+  drawBrushCursor(pos);
   document.getElementById('editActionArea').style.display = '';
-});
-
-mainCanvas.addEventListener('mousemove', function(e) {
-  if (!brushPainting) return;
-  const pos = getCanvasPos(e);
-  if (lastBrushPos) {
-    brushInterpolate(lastBrushPos.x, lastBrushPos.y, pos.x, pos.y);
-  }
-  lastBrushPos = pos;
-  showEditMaskOverlay();
 });
 
 mainCanvas.addEventListener('mouseup', function(e) {
   if (!brushPainting) return;
   brushPainting = false;
   lastBrushPos = null;
-  if (editMask) {
-    let count = 0;
-    for (let i = 0; i < editMask.length; i++) if (editMask[i]) count++;
-    document.getElementById('editHint').innerHTML =
-      '<b>' + count.toLocaleString() + 'px 選択中</b><br>さらに塗り足せます。操作を選んでください。';
-    setStatus(count.toLocaleString() + 'px を選択しました');
+  finishBrushCount();
+});
+
+// Hide brush cursor when mouse leaves canvas
+mainCanvas.addEventListener('mouseleave', function(e) {
+  if (selectMode === 'brush' && !brushPainting) {
+    showEditMaskOverlay(); // Redraw overlay without cursor
   }
 });
 
@@ -1863,7 +1913,7 @@ mainCanvas.addEventListener('touchstart', function(e) {
   };
   brushStroke(pos.x, pos.y);
   lastBrushPos = pos;
-  showEditMaskOverlay();
+  drawBrushCursor(pos);
   document.getElementById('editActionArea').style.display = '';
 }, { passive: false });
 
@@ -1878,19 +1928,15 @@ mainCanvas.addEventListener('touchmove', function(e) {
   };
   if (lastBrushPos) brushInterpolate(lastBrushPos.x, lastBrushPos.y, pos.x, pos.y);
   lastBrushPos = pos;
-  showEditMaskOverlay();
+  drawBrushCursor(pos);
 }, { passive: false });
 
 mainCanvas.addEventListener('touchend', function(e) {
   if (!brushPainting) return;
   brushPainting = false;
   lastBrushPos = null;
-  if (editMask) {
-    let count = 0;
-    for (let i = 0; i < editMask.length; i++) if (editMask[i]) count++;
-    document.getElementById('editHint').innerHTML =
-      '<b>' + count.toLocaleString() + 'px 選択中</b><br>さらに塗り足せます。操作を選んでください。';
-  }
+  showEditMaskOverlay();
+  finishBrushCount();
 });
 
 // ===== Init =====
