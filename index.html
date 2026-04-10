@@ -150,13 +150,13 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
 .empty-history { text-align: center; padding: 32px 16px; color: var(--text3); font-size: 13px; }
 
 /* Before/After overlay */
-#compare-overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); z-index: 100; }
-#compare-inner { background: var(--surface); border-radius: var(--radius); padding: 16px; max-width: 90vw; width: 700px; }
-#compare-inner h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
-.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.compare-col h3 { font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
-.compare-col canvas { width: 100%; border-radius: var(--radius-sm); display: block; }
-#compare-close { margin-top: 12px; }
+#compare-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.75); z-index: 200; }
+#compare-inner { background: var(--surface); border-radius: var(--radius); padding: 20px; max-width: 95vw; max-height: 95vh; width: 1100px; overflow-y: auto; }
+#compare-inner h2 { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: var(--text); }
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.compare-col h3 { font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 8px; }
+.compare-col canvas { width: 100%; border-radius: var(--radius-sm); display: block; box-shadow: 0 1px 6px rgba(0,0,0,0.1); }
+#compare-close { margin-top: 14px; }
 
 /* Model number panel */
 .model-section { padding: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -1428,27 +1428,19 @@ function showCompare() {
   overlay.style.display = 'flex';
   const bc = document.getElementById('before-canvas');
   const ac = document.getElementById('after-canvas');
-  const ratio = Math.min(280/originalImg.width, 200/originalImg.height);
-  const w = Math.round(originalImg.width * ratio);
-  const h = Math.round(originalImg.height * ratio);
-  bc.width = w; bc.height = h; ac.width = w; ac.height = h;
-  bc.getContext('2d').drawImage(originalImg, 0, 0, w, h);
-  const ac2 = ac.getContext('2d');
-  ac2.drawImage(originalImg, 0, 0, w, h);
-  const scaleX = w / mainCanvas.width;
-  const scaleY = h / mainCanvas.height;
-  layers.forEach(layer => {
-    ac2.save(); ac2.globalAlpha = layer.opacity;
-    if (layer.poly) {
-      ac2.beginPath();
-      ac2.moveTo(layer.poly[0].x * scaleX, layer.poly[0].y * scaleY);
-      for (let i = 1; i < layer.poly.length; i++) ac2.lineTo(layer.poly[i].x * scaleX, layer.poly[i].y * scaleY);
-      ac2.closePath();
-      ac2.clip();
-    }
-    applyMaterial(ac2, layer.mat, layer.x * scaleX, layer.y * scaleY, layer.w * scaleX, layer.h * scaleY);
-    ac2.restore();
-  });
+
+  // Use full canvas resolution for high quality
+  const w = mainCanvas.width;
+  const h = mainCanvas.height;
+  bc.width = w; bc.height = h;
+  ac.width = w; ac.height = h;
+
+  // Before: use pristine (original upload) image
+  const beforeImg = pristineImg || originalImg;
+  bc.getContext('2d').drawImage(beforeImg, 0, 0, w, h);
+
+  // After: copy current canvas state directly (includes all edits + layers)
+  ac.getContext('2d').drawImage(mainCanvas, 0, 0);
 }
 function hideCompare() {
   document.getElementById('compare-overlay').style.display = 'none';
