@@ -308,17 +308,38 @@ input[type=file] { display: none; }
       <!-- Edit panel -->
       <div class="sb-panel" id="panel-edit">
         <div class="edit-panel-inner">
+          <div class="edit-tools">
+            <button class="edit-tool-btn active" id="etClick" onclick="setSelectMode('click')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3l6 6-9 9-6-6z"/><path d="M3 21l3-3"/><path d="M9 3l1.5 1.5"/><path d="M3 9l1.5 1.5"/></svg>
+              <span>クリック選択</span>
+            </button>
+            <button class="edit-tool-btn" id="etBrush" onclick="setSelectMode('brush')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              <span>ブラシ選択</span>
+            </button>
+          </div>
           <div class="edit-controls">
             <div class="edit-hint" id="editHint">
-              写真をクリックすると、似た色の範囲を自動選択します。<br>Shift+クリックで選択範囲を追加できます。
+              写真をクリックで似た色を自動選択。<br>Shift+クリックで追加選択。
             </div>
-            <div class="ctrl-group">
+            <!-- Click mode settings -->
+            <div class="ctrl-group" id="clickSettings">
               <div class="ctrl-label">選択の感度</div>
               <div class="ctrl-row">
                 <label>狭い</label>
                 <input type="range" min="5" max="80" value="32" id="magicTolerance" oninput="document.getElementById('tolVal').textContent=this.value">
                 <label>広い</label>
                 <span class="ctrl-val" id="tolVal">32</span>
+              </div>
+            </div>
+            <!-- Brush mode settings -->
+            <div class="ctrl-group" id="brushSettings" style="display:none;">
+              <div class="ctrl-label">ブラシサイズ</div>
+              <div class="ctrl-row">
+                <label>小</label>
+                <input type="range" min="5" max="80" value="30" id="brushSize" oninput="document.getElementById('brushSizeVal').textContent=this.value+'px'">
+                <label>大</label>
+                <span class="ctrl-val" id="brushSizeVal">30px</span>
               </div>
             </div>
             <div id="editActionArea" style="display:none;">
@@ -339,7 +360,7 @@ input[type=file] { display: none; }
           <div class="edit-actions" id="editStepGuide">
             <div class="edit-hint" style="margin-bottom:0;">
               <b>おすすめの手順：</b><br>
-              1. ここで壁や床をクリックして選択<br>
+              1. ここで壁や床を選択<br>
               2.「白く塗る」で下地処理<br>
               3.「素材」タブに切り替え<br>
               4. クロスやCFを選んで貼る<br>
@@ -1521,8 +1542,23 @@ function removeCustomMat(id) {
   }
 }
 
-// ===== Edit Tools (Magic Select + Fill White + Erase) =====
+// ===== Edit Tools (Magic Select + Brush Select + Fill White + Erase) =====
 let editMask = null;  // Uint8Array, 1=selected
+let selectMode = 'click'; // 'click' or 'brush'
+let brushPainting = false;
+
+function setSelectMode(mode) {
+  selectMode = mode;
+  document.getElementById('etClick').classList.toggle('active', mode === 'click');
+  document.getElementById('etBrush').classList.toggle('active', mode === 'brush');
+  document.getElementById('clickSettings').style.display = mode === 'click' ? '' : 'none';
+  document.getElementById('brushSettings').style.display = mode === 'brush' ? '' : 'none';
+  if (mode === 'click') {
+    document.getElementById('editHint').innerHTML = '写真をクリックで似た色を自動選択。<br>Shift+クリックで追加選択。';
+  } else {
+    document.getElementById('editHint').innerHTML = 'ドラッグでなぞって範囲を選択します。<br>何度でも塗り足せます。';
+  }
+}
 
 function clearEditSelection() {
   editMask = null;
@@ -1726,21 +1762,136 @@ function commitToOriginal() {
   tmpImg.src = mainCanvas.toDataURL();
 }
 
-// --- Canvas click handler for edit panel ---
+// --- Canvas click handler for edit panel (click mode) ---
 mainCanvas.addEventListener('click', function(e) {
   const editPanel = document.getElementById('panel-edit');
   if (!editPanel.classList.contains('active')) return;
+  if (selectMode !== 'click') return;
   if (drawMode) return;
   if (!originalImg) return;
 
   e.stopPropagation();
   const pos = getCanvasPos(e);
-  const addMode = e.shiftKey; // Shift+click = add to selection
+  const addMode = e.shiftKey;
   setStatus('範囲を選択中...');
   requestAnimationFrame(() => {
     magicSelect(pos.x, pos.y, addMode);
   });
 }, true);
+
+// --- Brush selection: paint to select ---
+function brushStroke(x, y) {
+  const W = mainCanvas.width, H = mainCanvas.height;
+  if (!editMask) editMask = new Uint8Array(W * H);
+  const r = parseInt(document.getElementById('brushSize').value);
+  const cx = x | 0, cy = y | 0;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx*dx + dy*dy > r*r) continue;
+      const px = cx + dx, py = cy + dy;
+      if (px < 0 || px >= W || py < 0 || py >= H) continue;
+      editMask[py * W + px] = 1;
+    }
+  }
+}
+
+function brushInterpolate(x0, y0, x1, y1) {
+  const dist = Math.sqrt((x1-x0)**2 + (y1-y0)**2);
+  const steps = Math.max(1, Math.ceil(dist / 3));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    brushStroke(x0 + (x1-x0)*t, y0 + (y1-y0)*t);
+  }
+}
+
+let lastBrushPos = null;
+
+mainCanvas.addEventListener('mousedown', function(e) {
+  const editPanel = document.getElementById('panel-edit');
+  if (!editPanel.classList.contains('active')) return;
+  if (selectMode !== 'brush') return;
+  if (drawMode) return;
+  if (!originalImg) return;
+
+  e.preventDefault();
+  brushPainting = true;
+  const pos = getCanvasPos(e);
+  brushStroke(pos.x, pos.y);
+  lastBrushPos = pos;
+  showEditMaskOverlay();
+  document.getElementById('editActionArea').style.display = '';
+});
+
+mainCanvas.addEventListener('mousemove', function(e) {
+  if (!brushPainting) return;
+  const pos = getCanvasPos(e);
+  if (lastBrushPos) {
+    brushInterpolate(lastBrushPos.x, lastBrushPos.y, pos.x, pos.y);
+  }
+  lastBrushPos = pos;
+  showEditMaskOverlay();
+});
+
+mainCanvas.addEventListener('mouseup', function(e) {
+  if (!brushPainting) return;
+  brushPainting = false;
+  lastBrushPos = null;
+  if (editMask) {
+    let count = 0;
+    for (let i = 0; i < editMask.length; i++) if (editMask[i]) count++;
+    document.getElementById('editHint').innerHTML =
+      '<b>' + count.toLocaleString() + 'px 選択中</b><br>さらに塗り足せます。操作を選んでください。';
+    setStatus(count.toLocaleString() + 'px を選択しました');
+  }
+});
+
+// Touch support for brush
+mainCanvas.addEventListener('touchstart', function(e) {
+  const editPanel = document.getElementById('panel-edit');
+  if (!editPanel.classList.contains('active')) return;
+  if (selectMode !== 'brush') return;
+  if (drawMode) return;
+  if (!originalImg) return;
+
+  e.preventDefault();
+  brushPainting = true;
+  const touch = e.touches[0];
+  const rect = mainCanvas.getBoundingClientRect();
+  const pos = {
+    x: (touch.clientX - rect.left) * (mainCanvas.width / rect.width),
+    y: (touch.clientY - rect.top) * (mainCanvas.height / rect.height)
+  };
+  brushStroke(pos.x, pos.y);
+  lastBrushPos = pos;
+  showEditMaskOverlay();
+  document.getElementById('editActionArea').style.display = '';
+}, { passive: false });
+
+mainCanvas.addEventListener('touchmove', function(e) {
+  if (!brushPainting) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = mainCanvas.getBoundingClientRect();
+  const pos = {
+    x: (touch.clientX - rect.left) * (mainCanvas.width / rect.width),
+    y: (touch.clientY - rect.top) * (mainCanvas.height / rect.height)
+  };
+  if (lastBrushPos) brushInterpolate(lastBrushPos.x, lastBrushPos.y, pos.x, pos.y);
+  lastBrushPos = pos;
+  showEditMaskOverlay();
+}, { passive: false });
+
+mainCanvas.addEventListener('touchend', function(e) {
+  if (!brushPainting) return;
+  brushPainting = false;
+  lastBrushPos = null;
+  if (editMask) {
+    let count = 0;
+    for (let i = 0; i < editMask.length; i++) if (editMask[i]) count++;
+    document.getElementById('editHint').innerHTML =
+      '<b>' + count.toLocaleString() + 'px 選択中</b><br>さらに塗り足せます。操作を選んでください。';
+  }
+});
 
 // ===== Init =====
 buildCatBar();
