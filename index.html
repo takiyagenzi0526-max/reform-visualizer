@@ -99,10 +99,13 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
 .apply-area .btn + .btn { margin-top: 6px; }
 .btn-block { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; border-radius: var(--radius-sm); }
 
-/* Blend mode selector */
-.blend-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.blend-row label { font-size: 11px; color: var(--text3); white-space: nowrap; }
+/* Blend controls */
+.blend-controls { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.blend-row { display: flex; align-items: center; gap: 8px; }
+.blend-row label { font-size: 11px; color: var(--text3); white-space: nowrap; min-width: 36px; }
 .blend-row select { flex: 1; height: 28px; border: 1px solid var(--border2); border-radius: var(--radius-sm); font-family: inherit; font-size: 11px; color: var(--text); background: var(--surface); padding: 0 6px; }
+.blend-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.blend-val { font-size: 11px; font-weight: 500; min-width: 28px; text-align: right; color: var(--text); }
 
 /* AI panel */
 .ai-panel-inner { display: flex; flex-direction: column; gap: 0; height: 100%; overflow: hidden; }
@@ -271,14 +274,26 @@ input[type=file] { display: none; }
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             範囲を選択して適用
           </button>
-          <div class="blend-row">
-            <label>合成</label>
-            <select id="blendSelect" onchange="blendMode=this.value; if(layers.length) redraw();">
-              <option value="multiply">リアル（照明を反映）</option>
-              <option value="overlay">ナチュラル</option>
-              <option value="soft-light">ソフト</option>
-              <option value="normal">ベタ塗り</option>
-            </select>
+          <div class="blend-controls">
+            <div class="blend-row">
+              <label>合成</label>
+              <select id="blendSelect" onchange="blendMode=this.value; if(layers.length) redraw();">
+                <option value="multiply">リアル（照明反映）</option>
+                <option value="overlay">ナチュラル</option>
+                <option value="soft-light">ソフト</option>
+                <option value="normal">ベタ塗り</option>
+              </select>
+            </div>
+            <div class="blend-row">
+              <label>色抜き</label>
+              <input type="range" min="0" max="100" value="80" id="washSlider" oninput="washLevel=this.value/100; document.getElementById('washVal').textContent=this.value+'%'; if(layers.length) redraw();">
+              <span class="blend-val" id="washVal">80%</span>
+            </div>
+            <div class="blend-row">
+              <label>明るさ</label>
+              <input type="range" min="0" max="100" value="50" id="brightnessSlider" oninput="brightnessBoost=this.value/100; document.getElementById('brightVal').textContent=this.value+'%'; if(layers.length) redraw();">
+              <span class="blend-val" id="brightVal">50%</span>
+            </div>
           </div>
         </div>
       </div>
@@ -341,6 +356,8 @@ let layers = [];
 let selectedMat = null;
 let opacity = 0.80;
 let blendMode = 'multiply';
+let washLevel = 0.80;       // 色抜き度合い (0=そのまま, 1=完全にグレースケール化)
+let brightnessBoost = 0.50; // 明るさ補正 (0=暗め, 0.5=中間, 1=最大限明るく)
 let drawMode = false;
 let polyPoints = [];       // polygon vertices [{x,y}, ...]
 let currentCat = 'サンゲツ SP';
@@ -841,7 +858,55 @@ function applyMaterial(ctx, mat, x, y, w, h) {
   }
 }
 
-// ===== Redraw with blend mode compositing =====
+// ===== Color wash: desaturate + brighten to remove original color =====
+function washArea(canvas, pts, wash, brightness) {
+  if (wash <= 0) return;
+  const w = canvas.width, h = canvas.height;
+  const tmpCtx = canvas.getContext('2d');
+
+  // Get bounding box of polygon for performance
+  let minX = w, minY = h, maxX = 0, maxY = 0;
+  pts.forEach(p => { minX = Math.min(minX, p.x|0); minY = Math.min(minY, p.y|0); maxX = Math.max(maxX, Math.ceil(p.x)); maxY = Math.max(maxY, Math.ceil(p.y)); });
+  minX = Math.max(0, minX); minY = Math.max(0, minY);
+  maxX = Math.min(w, maxX); maxY = Math.min(h, maxY);
+  const bw = maxX - minX, bh = maxY - minY;
+  if (bw <= 0 || bh <= 0) return;
+
+  // Create point-in-polygon test
+  function pointInPoly(px, py) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+      if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  const imageData = tmpCtx.getImageData(minX, minY, bw, bh);
+  const d = imageData.data;
+  // Brightness boost: 0=no change, 0.5=moderate, 1=very bright
+  const liftAmount = brightness * 0.6; // max 60% lift toward white
+
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      const px = minX + x, py = minY + y;
+      if (!pointInPoly(px, py)) continue;
+      const idx = (y * bw + x) * 4;
+      const r = d[idx], g = d[idx+1], b = d[idx+2];
+      // Luminance
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      // Lifted luminance (push toward white)
+      const lifted = lum + (255 - lum) * liftAmount;
+      // Mix: original color -> grayscale+lifted by wash amount
+      d[idx]   = Math.min(255, r + (lifted - r) * wash);
+      d[idx+1] = Math.min(255, g + (lifted - g) * wash);
+      d[idx+2] = Math.min(255, b + (lifted - b) * wash);
+    }
+  }
+  tmpCtx.putImageData(imageData, minX, minY);
+}
+
+// ===== Redraw with color wash + blend mode compositing =====
 function redraw() {
   if (!originalImg) return;
   const W = mainCanvas.width, H = mainCanvas.height;
@@ -851,9 +916,11 @@ function redraw() {
   layers.forEach(layer => {
     const mode = layer.blend || blendMode;
     const pts = layer.poly;
+    const layerWash = layer.wash != null ? layer.wash : washLevel;
+    const layerBright = layer.brightness != null ? layer.brightness : brightnessBoost;
 
     if (mode === 'normal' || !pts) {
-      // Simple overlay (legacy behavior)
+      // Simple overlay
       ctx.save();
       ctx.globalAlpha = layer.opacity;
       if (pts) {
@@ -868,43 +935,40 @@ function redraw() {
       return;
     }
 
-    // --- Realistic blend mode compositing ---
-    // 1) Render material to offscreen canvas
-    const offCanvas = document.createElement('canvas');
-    offCanvas.width = W; offCanvas.height = H;
-    const offCtx = offCanvas.getContext('2d');
+    // --- Step 1: Create base with color washed out ---
+    const baseCanvas = document.createElement('canvas');
+    baseCanvas.width = W; baseCanvas.height = H;
+    const baseCtx = baseCanvas.getContext('2d');
+    baseCtx.drawImage(originalImg, 0, 0, W, H);
 
-    // Draw original photo on offscreen (needed for blend base)
-    offCtx.drawImage(originalImg, 0, 0, W, H);
+    // Wash out original color in the polygon area
+    if (layerWash > 0) {
+      washArea(baseCanvas, pts, layerWash, layerBright);
+    }
 
-    // Apply material with blend mode on top of the original
-    offCtx.save();
-    offCtx.globalCompositeOperation = mode;
-    offCtx.globalAlpha = 1;
-    applyMaterial(offCtx, layer.mat, layer.x, layer.y, layer.w, layer.h);
-    offCtx.restore();
+    // --- Step 2: Apply material with blend mode on washed base ---
+    baseCtx.save();
+    baseCtx.globalCompositeOperation = mode;
+    baseCtx.globalAlpha = 1;
+    applyMaterial(baseCtx, layer.mat, layer.x, layer.y, layer.w, layer.h);
+    baseCtx.restore();
 
-    // 2) Mix blended result with original using opacity
-    //    Create another offscreen for the mixed result
+    // --- Step 3: Mix with original using opacity ---
     const mixCanvas = document.createElement('canvas');
     mixCanvas.width = W; mixCanvas.height = H;
     const mixCtx = mixCanvas.getContext('2d');
-
-    // Start with original
     mixCtx.drawImage(originalImg, 0, 0, W, H);
-    // Overlay the blended version at desired opacity
     mixCtx.globalAlpha = layer.opacity;
-    mixCtx.drawImage(offCanvas, 0, 0);
+    mixCtx.drawImage(baseCanvas, 0, 0);
     mixCtx.globalAlpha = 1;
 
-    // 3) Clip to polygon and draw onto main canvas
+    // --- Step 4: Clip to polygon and draw ---
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
     ctx.closePath();
     ctx.clip();
-    // Replace the region with blended result
     ctx.drawImage(mixCanvas, 0, 0);
     ctx.restore();
   });
@@ -1063,7 +1127,7 @@ function finishPoly() {
   const layer = {
     mat: selectedMat, poly: [...polyPoints],
     x: minX, y: minY, w: maxX - minX, h: maxY - minY,
-    opacity, blend: blendMode, cat: currentCat, ts: Date.now()
+    opacity, blend: blendMode, wash: washLevel, brightness: brightnessBoost, cat: currentCat, ts: Date.now()
   };
   layers.push(layer);
   polyPoints = [];
