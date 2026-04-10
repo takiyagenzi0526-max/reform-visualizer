@@ -71,7 +71,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
 .sb-panel.active { display: flex; }
 
 /* Material panel */
-.cat-bar { display: flex; gap: 6px; padding: 10px 12px; flex-shrink: 0; overflow-x: auto; }
+.cat-bar { display: flex; gap: 6px; padding: 10px 12px; flex-shrink: 0; overflow-x: auto; scrollbar-width: thin; }
 .cat-btn { padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border2); background: none; font-family: inherit; font-size: 12px; color: var(--text2); cursor: pointer; white-space: nowrap; transition: all 0.12s; flex-shrink: 0; }
 .cat-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .mat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 12px 12px; overflow-y: auto; flex: 1; }
@@ -81,7 +81,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
 .mat-swatch:hover { transform: scale(1.04); }
 .mat-swatch.selected { border-color: var(--accent); }
 .mat-swatch.selected::after { content: '✓'; position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-.mat-label { font-size: 10px; color: var(--text2); text-align: center; margin-top: 4px; line-height: 1.3; }
+.mat-label { font-size: 10px; color: var(--text2); text-align: center; margin-top: 4px; line-height: 1.3; white-space: pre-line; }
 
 /* Selected material */
 .sel-area { padding: 10px 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
@@ -233,9 +233,9 @@ input[type=file] { display: none; }
       <!-- Materials panel -->
       <div class="sb-panel active" id="panel-materials">
         <div class="model-section">
-          <div class="model-label">品番検索（TOTO / LIXIL / サンゲツ 等）</div>
+          <div class="model-label">品番検索（サンゲツ SP / 東リ VS / シンコール SLP 等）</div>
           <div class="model-row">
-            <input type="text" id="modelInput" placeholder="例：BB-117, CF-9420" onkeydown="if(event.key==='Enter') lookupModel()">
+            <input type="text" id="modelInput" placeholder="例：SP-2801, VS-1001, CF-9401" onkeydown="if(event.key==='Enter') lookupModel()">
             <button class="btn" onclick="lookupModel()">検索</button>
           </div>
           <div class="model-result" id="modelResult"></div>
@@ -327,7 +327,7 @@ let selectedMat = null;
 let opacity = 0.80;
 let drawMode = false;
 let polyPoints = [];       // polygon vertices [{x,y}, ...]
-let currentCat = '壁紙';
+let currentCat = 'サンゲツ SP';
 let aiResultText = '';
 let customIdCounter = 0;
 
@@ -338,39 +338,129 @@ const octx = overlayCanvas.getContext('2d');
 
 // ===== Material Catalog =====
 const catalog = {
-  '壁紙': [
-    { id:'w1', name:'ピュアホワイト', maker:'サンゲツ', type:'solid', c:'#FAF9F6' },
-    { id:'w2', name:'ナチュラルベージュ', maker:'サンゲツ', type:'solid', c:'#EDE3D2' },
-    { id:'w3', name:'ライトグレー', maker:'リリカラ', type:'solid', c:'#D4D2CE' },
-    { id:'w4', name:'ミストグレー', maker:'リリカラ', type:'solid', c:'#B8B6B2' },
-    { id:'w5', name:'ストーン', maker:'シンコール', type:'solid', c:'#C8C0B4' },
-    { id:'w6', name:'アイスブルー', maker:'サンゲツ', type:'solid', c:'#C8D8E4' },
-    { id:'w7', name:'セージグリーン', maker:'リリカラ', type:'solid', c:'#A8BCA8' },
-    { id:'w8', name:'ダスキーピンク', maker:'シンコール', type:'solid', c:'#D4B0B0' },
-    { id:'w9', name:'モルタル調', maker:'サンゲツ', type:'solid', c:'#9A9894' },
-    { id:'w10', name:'木目クロス', maker:'サンゲツ', type:'woodwall', c1:'#C8A070', c2:'#B08858' },
-    { id:'w11', name:'縦ストライプ（ベージュ）', maker:'リリカラ', type:'stripev', c1:'#E8DDD0', c2:'#D8CCBC' },
-    { id:'w12', name:'レンガ調', maker:'サンゲツ', type:'brick', c1:'#E0A888', c2:'#C88868' },
-    { id:'w13', name:'タイル調（白）', maker:'シンコール', type:'walltile', c1:'#F0EEE8', c2:'#D4D0C8' },
-    { id:'w14', name:'ネイビー', maker:'リリカラ', type:'solid', c:'#2C3E5A' },
-    { id:'w15', name:'チャコール', maker:'サンゲツ', type:'solid', c:'#484844' },
+  'サンゲツ SP': [
+    // ---- 無地・織物調 ----
+    { id:'sp-2801', name:'SP-2801', maker:'サンゲツ', type:'woven', c:'#F6F4EF', c2:'#EBE8E2', label:'ホワイト 織物調' },
+    { id:'sp-2802', name:'SP-2802', maker:'サンゲツ', type:'woven', c:'#F0EDE6', c2:'#E4E0D8', label:'オフホワイト 織物調' },
+    { id:'sp-2803', name:'SP-2803', maker:'サンゲツ', type:'woven', c:'#EAE5DA', c2:'#DDD8CC', label:'ベージュ 織物調' },
+    { id:'sp-2804', name:'SP-2804', maker:'サンゲツ', type:'woven', c:'#E0DBD0', c2:'#D4CEC2', label:'ウォームベージュ 織物調' },
+    { id:'sp-2805', name:'SP-2805', maker:'サンゲツ', type:'woven', c:'#D6D2CC', c2:'#C8C4BE', label:'ライトグレー 織物調' },
+    { id:'sp-2806', name:'SP-2806', maker:'サンゲツ', type:'woven', c:'#C0BCB6', c2:'#B0ACA6', label:'グレー 織物調' },
+    { id:'sp-2807', name:'SP-2807', maker:'サンゲツ', type:'woven', c:'#9A9690', c2:'#8A8680', label:'ミディアムグレー 織物調' },
+    // ---- 石目調 ----
+    { id:'sp-2811', name:'SP-2811', maker:'サンゲツ', type:'stone', c:'#F2F0EA', c2:'#E0DDD6', c3:'#D0CCC4', label:'ホワイト 石目調' },
+    { id:'sp-2812', name:'SP-2812', maker:'サンゲツ', type:'stone', c:'#E8E4DC', c2:'#D8D2C8', c3:'#C8C2B8', label:'ライトベージュ 石目調' },
+    { id:'sp-2813', name:'SP-2813', maker:'サンゲツ', type:'stone', c:'#D0CCC4', c2:'#C0BAB0', c3:'#B0AAA0', label:'グレーベージュ 石目調' },
+    { id:'sp-2814', name:'SP-2814', maker:'サンゲツ', type:'stone', c:'#C8C4C0', c2:'#B8B4AE', c3:'#A8A4A0', label:'ライトグレー 石目調' },
+    { id:'sp-2815', name:'SP-2815', maker:'サンゲツ', type:'stone', c:'#A8A4A0', c2:'#989490', c3:'#888480', label:'グレー 石目調' },
+    // ---- 塗り壁調 ----
+    { id:'sp-2821', name:'SP-2821', maker:'サンゲツ', type:'plaster', c:'#F4F2EC', c2:'#E8E4DE', label:'ホワイト 塗り壁調' },
+    { id:'sp-2822', name:'SP-2822', maker:'サンゲツ', type:'plaster', c:'#ECE8E0', c2:'#E0DAD0', label:'アイボリー 塗り壁調' },
+    { id:'sp-2823', name:'SP-2823', maker:'サンゲツ', type:'plaster', c:'#E0DCD4', c2:'#D4CEC4', label:'ベージュ 塗り壁調' },
+    { id:'sp-2824', name:'SP-2824', maker:'サンゲツ', type:'plaster', c:'#D0CCC6', c2:'#C4BEB6', label:'グレー 塗り壁調' },
+    // ---- アクセント ----
+    { id:'sp-2831', name:'SP-2831', maker:'サンゲツ', type:'woven', c:'#2C3E5A', c2:'#22344E', label:'ネイビー 織物調' },
+    { id:'sp-2832', name:'SP-2832', maker:'サンゲツ', type:'woven', c:'#4A4A48', c2:'#3E3E3C', label:'チャコール 織物調' },
+    { id:'sp-2833', name:'SP-2833', maker:'サンゲツ', type:'woven', c:'#A8BCA8', c2:'#98AC98', label:'セージグリーン 織物調' },
+    { id:'sp-2834', name:'SP-2834', maker:'サンゲツ', type:'stone', c:'#C8D8E4', c2:'#B8C8D4', c3:'#A8B8C4', label:'アイスブルー 石目調' },
+    { id:'sp-2835', name:'SP-2835', maker:'サンゲツ', type:'woven', c:'#D4B0B0', c2:'#C8A4A4', label:'ダスキーピンク 織物調' },
+    // ---- 木目クロス ----
+    { id:'sp-2841', name:'SP-2841', maker:'サンゲツ', type:'woodwall', c1:'#C8A070', c2:'#B08858', label:'ライトウッド 木目' },
+    { id:'sp-2842', name:'SP-2842', maker:'サンゲツ', type:'woodwall', c1:'#A08060', c2:'#886848', label:'ミディアムウッド 木目' },
+    { id:'sp-2843', name:'SP-2843', maker:'サンゲツ', type:'woodwall', c1:'#6A4A30', c2:'#583820', label:'ダークウッド 木目' },
+    // ---- レンガ・タイル調 ----
+    { id:'sp-2851', name:'SP-2851', maker:'サンゲツ', type:'brick', c1:'#E0A888', c2:'#C88868', label:'レンガ調 ナチュラル' },
+    { id:'sp-2852', name:'SP-2852', maker:'サンゲツ', type:'walltile', c1:'#F0EEE8', c2:'#D4D0C8', label:'タイル調 ホワイト' },
   ],
-  '床材': [
-    { id:'f1', name:'ライトオーク', maker:'大建工業', type:'wood', c1:'#D4B070', c2:'#C09A58' },
-    { id:'f2', name:'ナチュラルオーク', maker:'大建工業', type:'wood', c1:'#E0C890', c2:'#CEB070' },
-    { id:'f3', name:'ダークウォールナット', maker:'大建工業', type:'wood', c1:'#6A4228', c2:'#58321A' },
-    { id:'f4', name:'グレーオーク', maker:'東リ', type:'wood', c1:'#989890', c2:'#888880' },
-    { id:'f5', name:'ホワイトオーク', maker:'東リ', type:'wood', c1:'#EEE4D0', c2:'#DDD0B8' },
-    { id:'f6', name:'ブラックウォールナット', maker:'東リ', type:'wood', c1:'#38281A', c2:'#281810' },
-    { id:'f7', name:'ホワイトタイル', maker:'東リ', type:'tile', c1:'#F2F0EA', c2:'#D8D4CC' },
-    { id:'f8', name:'グレータイル', maker:'東リ', type:'tile', c1:'#B8B4B0', c2:'#9C9894' },
-    { id:'f9', name:'ダークタイル', maker:'東リ', type:'tile', c1:'#5A5856', c2:'#444240' },
-    { id:'f10', name:'テラコッタ', maker:'東リ', type:'tile', c1:'#C87850', c2:'#B06038' },
-    { id:'f11', name:'ベージュCF', maker:'フクビ', type:'solid', c:'#E0D0B8' },
-    { id:'f12', name:'グレーCF', maker:'フクビ', type:'solid', c:'#B0ACAA' },
-    { id:'f13', name:'ブラックCF', maker:'フクビ', type:'solid', c:'#303030' },
-    { id:'f14', name:'ライトグレーCF', maker:'フクビ', type:'solid', c:'#D0CCC8' },
-    { id:'f15', name:'カーペット（グレー）', maker:'東リ', type:'carpet', c:'#8090A8' },
+  '東リ VS': [
+    // ---- 織物調 ----
+    { id:'vs-1001', name:'VS-1001', maker:'東リ', type:'woven', c:'#F5F3EE', c2:'#EAE7E0', label:'ホワイト 織物調' },
+    { id:'vs-1002', name:'VS-1002', maker:'東リ', type:'woven', c:'#EFECE4', c2:'#E2DED6', label:'オフホワイト 織物調' },
+    { id:'vs-1003', name:'VS-1003', maker:'東リ', type:'woven', c:'#E8E3D8', c2:'#DAD4C8', label:'アイボリー 織物調' },
+    { id:'vs-1004', name:'VS-1004', maker:'東リ', type:'woven', c:'#DED8CC', c2:'#D0CAC0', label:'ベージュ 織物調' },
+    { id:'vs-1005', name:'VS-1005', maker:'東リ', type:'woven', c:'#D4D0CA', c2:'#C6C2BC', label:'ライトグレー 織物調' },
+    { id:'vs-1006', name:'VS-1006', maker:'東リ', type:'woven', c:'#BAB6B0', c2:'#AAA6A0', label:'グレー 織物調' },
+    { id:'vs-1007', name:'VS-1007', maker:'東リ', type:'woven', c:'#989490', c2:'#888480', label:'ミディアムグレー 織物調' },
+    // ---- 石目調 ----
+    { id:'vs-1011', name:'VS-1011', maker:'東リ', type:'stone', c:'#F0EEE8', c2:'#E0DCD4', c3:'#D0CCC4', label:'ホワイト 石目調' },
+    { id:'vs-1012', name:'VS-1012', maker:'東リ', type:'stone', c:'#E6E2D8', c2:'#D6D0C6', c3:'#C6C0B6', label:'ベージュ 石目調' },
+    { id:'vs-1013', name:'VS-1013', maker:'東リ', type:'stone', c:'#CCC8C0', c2:'#BCB8B0', c3:'#ACA8A0', label:'グレー 石目調' },
+    { id:'vs-1014', name:'VS-1014', maker:'東リ', type:'stone', c:'#B0ACA8', c2:'#A09C98', c3:'#908C88', label:'ダークグレー 石目調' },
+    // ---- 塗り壁調 ----
+    { id:'vs-1021', name:'VS-1021', maker:'東リ', type:'plaster', c:'#F2F0EA', c2:'#E6E2DC', label:'ホワイト 塗り壁調' },
+    { id:'vs-1022', name:'VS-1022', maker:'東リ', type:'plaster', c:'#EAE6DE', c2:'#DED8CE', label:'アイボリー 塗り壁調' },
+    { id:'vs-1023', name:'VS-1023', maker:'東リ', type:'plaster', c:'#DCD8D0', c2:'#D0CAC0', label:'ベージュ 塗り壁調' },
+    { id:'vs-1024', name:'VS-1024', maker:'東リ', type:'plaster', c:'#C8C4BE', c2:'#BCB8B0', label:'グレー 塗り壁調' },
+    // ---- アクセント ----
+    { id:'vs-1031', name:'VS-1031', maker:'東リ', type:'woven', c:'#2A3858', c2:'#202E4C', label:'ネイビー 織物調' },
+    { id:'vs-1032', name:'VS-1032', maker:'東リ', type:'woven', c:'#464644', c2:'#3A3A38', label:'チャコール 織物調' },
+    { id:'vs-1033', name:'VS-1033', maker:'東リ', type:'stone', c:'#B0C8B8', c2:'#A0B8A8', c3:'#90A898', label:'グリーン 石目調' },
+    // ---- 木目・レンガ調 ----
+    { id:'vs-1041', name:'VS-1041', maker:'東リ', type:'woodwall', c1:'#D0B080', c2:'#B89868', label:'ライトウッド 木目' },
+    { id:'vs-1042', name:'VS-1042', maker:'東リ', type:'woodwall', c1:'#987050', c2:'#805838', label:'ダークウッド 木目' },
+    { id:'vs-1043', name:'VS-1043', maker:'東リ', type:'brick', c1:'#D8A080', c2:'#C08060', label:'レンガ調' },
+  ],
+  'シンコール SLP': [
+    // ---- 織物調 ----
+    { id:'slp-301', name:'SLP-301', maker:'シンコール', type:'woven', c:'#F4F2EC', c2:'#E8E4DE', label:'ホワイト 織物調' },
+    { id:'slp-302', name:'SLP-302', maker:'シンコール', type:'woven', c:'#EDE9E2', c2:'#E0DCD4', label:'オフホワイト 織物調' },
+    { id:'slp-303', name:'SLP-303', maker:'シンコール', type:'woven', c:'#E6E0D6', c2:'#D8D2C6', label:'アイボリー 織物調' },
+    { id:'slp-304', name:'SLP-304', maker:'シンコール', type:'woven', c:'#DCD6CC', c2:'#CEC8BC', label:'ベージュ 織物調' },
+    { id:'slp-305', name:'SLP-305', maker:'シンコール', type:'woven', c:'#D2CEC8', c2:'#C4C0BA', label:'ライトグレー 織物調' },
+    { id:'slp-306', name:'SLP-306', maker:'シンコール', type:'woven', c:'#B8B4AE', c2:'#A8A4A0', label:'グレー 織物調' },
+    // ---- 石目調 ----
+    { id:'slp-311', name:'SLP-311', maker:'シンコール', type:'stone', c:'#F0EDE6', c2:'#DED8CE', c3:'#CEC8BE', label:'ホワイト 石目調' },
+    { id:'slp-312', name:'SLP-312', maker:'シンコール', type:'stone', c:'#E4E0D6', c2:'#D4CEC4', c3:'#C4BEB4', label:'ベージュ 石目調' },
+    { id:'slp-313', name:'SLP-313', maker:'シンコール', type:'stone', c:'#CAC6C0', c2:'#BAB6AE', c3:'#AAA6A0', label:'グレー 石目調' },
+    // ---- 塗り壁調 ----
+    { id:'slp-321', name:'SLP-321', maker:'シンコール', type:'plaster', c:'#F2EFE8', c2:'#E4E0D8', label:'ホワイト 塗り壁調' },
+    { id:'slp-322', name:'SLP-322', maker:'シンコール', type:'plaster', c:'#E8E4DC', c2:'#DCD6CC', label:'アイボリー 塗り壁調' },
+    { id:'slp-323', name:'SLP-323', maker:'シンコール', type:'plaster', c:'#D8D4CC', c2:'#CCC6BC', label:'ベージュ 塗り壁調' },
+    // ---- アクセント ----
+    { id:'slp-331', name:'SLP-331', maker:'シンコール', type:'woven', c:'#2E4060', c2:'#243654', label:'ネイビー 織物調' },
+    { id:'slp-332', name:'SLP-332', maker:'シンコール', type:'stone', c:'#C8C0B4', c2:'#B8B0A4', c3:'#A8A094', label:'ストーン 石目調' },
+    { id:'slp-333', name:'SLP-333', maker:'シンコール', type:'woven', c:'#D2AEB0', c2:'#C6A2A4', label:'ピンク 織物調' },
+    // ---- タイル調 ----
+    { id:'slp-341', name:'SLP-341', maker:'シンコール', type:'walltile', c1:'#EEEAE4', c2:'#D2CEC6', label:'タイル調 ホワイト' },
+    { id:'slp-342', name:'SLP-342', maker:'シンコール', type:'walltile', c1:'#E0DCD4', c2:'#C8C4BA', label:'タイル調 ベージュ' },
+  ],
+  '量産CF（東リ）': [
+    { id:'cf-9401', name:'CF-9401', maker:'東リ', type:'cfwood', c1:'#E8D8C0', c2:'#D4C4A8', c3:'#C8B89C', label:'ライトオーク CF' },
+    { id:'cf-9402', name:'CF-9402', maker:'東リ', type:'cfwood', c1:'#DCC8A8', c2:'#CCB898', c3:'#C0AC8C', label:'ナチュラルオーク CF' },
+    { id:'cf-9403', name:'CF-9403', maker:'東リ', type:'cfwood', c1:'#B09878', c2:'#A08868', c3:'#90785C', label:'ミディアムオーク CF' },
+    { id:'cf-9404', name:'CF-9404', maker:'東リ', type:'cfwood', c1:'#8A6A48', c2:'#7A5A38', c3:'#6A4A2C', label:'ダークオーク CF' },
+    { id:'cf-9405', name:'CF-9405', maker:'東リ', type:'cfwood', c1:'#6A4830', c2:'#5A3820', c3:'#4A2C18', label:'ウォールナット CF' },
+    { id:'cf-9406', name:'CF-9406', maker:'東リ', type:'cfwood', c1:'#C0B8A8', c2:'#B0A898', c3:'#A09888', label:'グレーオーク CF' },
+    { id:'cf-9411', name:'CF-9411', maker:'東リ', type:'cftile', c1:'#F0EDE6', c2:'#D8D4CC', c3:'#E4E0D8', label:'ホワイトタイル CF' },
+    { id:'cf-9412', name:'CF-9412', maker:'東リ', type:'cftile', c1:'#E0DAD0', c2:'#C8C2B8', c3:'#D4CEC4', label:'ベージュタイル CF' },
+    { id:'cf-9413', name:'CF-9413', maker:'東リ', type:'cftile', c1:'#B8B4AE', c2:'#A09C96', c3:'#ACAAA4', label:'グレータイル CF' },
+    { id:'cf-9414', name:'CF-9414', maker:'東リ', type:'cftile', c1:'#C88060', c2:'#B06840', c3:'#BC7450', label:'テラコッタ CF' },
+    { id:'cf-9415', name:'CF-9415', maker:'東リ', type:'cftile', c1:'#585654', c2:'#484644', c3:'#504E4C', label:'ダークタイル CF' },
+    { id:'cf-9421', name:'CF-9421', maker:'東リ', type:'cfstone', c1:'#E8E4DC', c2:'#D4D0C8', c3:'#C4C0B8', label:'ライムストーン CF' },
+    { id:'cf-9422', name:'CF-9422', maker:'東リ', type:'cfstone', c1:'#D0CCC4', c2:'#C0BAB0', c3:'#B0AAA0', label:'サンドストーン CF' },
+    { id:'cf-9423', name:'CF-9423', maker:'東リ', type:'cfstone', c1:'#A8A4A0', c2:'#989490', c3:'#888480', label:'グレーストーン CF' },
+  ],
+  '量産CF（サンゲツ）': [
+    { id:'hm-4001', name:'HM-4001', maker:'サンゲツ', type:'cfwood', c1:'#E6D6BE', c2:'#D4C4A4', c3:'#C8B898', label:'ライトオーク CF' },
+    { id:'hm-4002', name:'HM-4002', maker:'サンゲツ', type:'cfwood', c1:'#DACAA8', c2:'#C8B898', c3:'#BCAC8C', label:'ナチュラルオーク CF' },
+    { id:'hm-4003', name:'HM-4003', maker:'サンゲツ', type:'cfwood', c1:'#AE9474', c2:'#9E8464', c3:'#8E7458', label:'ミディアムウォールナット CF' },
+    { id:'hm-4004', name:'HM-4004', maker:'サンゲツ', type:'cfwood', c1:'#6C4C34', c2:'#5C3C24', c3:'#4C2C18', label:'ダークウォールナット CF' },
+    { id:'hm-4005', name:'HM-4005', maker:'サンゲツ', type:'cfwood', c1:'#BEB8A8', c2:'#AEA898', c3:'#9E9888', label:'グレーウッド CF' },
+    { id:'hm-4011', name:'HM-4011', maker:'サンゲツ', type:'cftile', c1:'#EEE8E0', c2:'#D6D0C8', c3:'#E2DCD4', label:'ホワイトタイル CF' },
+    { id:'hm-4012', name:'HM-4012', maker:'サンゲツ', type:'cftile', c1:'#DED6CC', c2:'#C6BEB4', c3:'#D2CAC0', label:'ベージュタイル CF' },
+    { id:'hm-4013', name:'HM-4013', maker:'サンゲツ', type:'cftile', c1:'#B6B2AA', c2:'#9E9A92', c3:'#AAA8A2', label:'グレータイル CF' },
+    { id:'hm-4021', name:'HM-4021', maker:'サンゲツ', type:'cfstone', c1:'#E4E0D8', c2:'#D2CCC4', c3:'#C2BCB4', label:'ライムストーン CF' },
+    { id:'hm-4022', name:'HM-4022', maker:'サンゲツ', type:'cfstone', c1:'#CCC8C0', c2:'#BCB8AE', c3:'#ACA89E', label:'サンドストーン CF' },
+  ],
+  '量産CF（シンコール）': [
+    { id:'se-4501', name:'SE-4501', maker:'シンコール', type:'cfwood', c1:'#E4D4BC', c2:'#D2C2A2', c3:'#C6B696', label:'ライトオーク CF' },
+    { id:'se-4502', name:'SE-4502', maker:'シンコール', type:'cfwood', c1:'#D8C8A6', c2:'#C6B696', c3:'#BAAA8A', label:'ナチュラルオーク CF' },
+    { id:'se-4503', name:'SE-4503', maker:'シンコール', type:'cfwood', c1:'#AC9272', c2:'#9C8262', c3:'#8C7256', label:'ミディアムウッド CF' },
+    { id:'se-4504', name:'SE-4504', maker:'シンコール', type:'cfwood', c1:'#684A32', c2:'#583A22', c3:'#4A2E18', label:'ダークウッド CF' },
+    { id:'se-4505', name:'SE-4505', maker:'シンコール', type:'cfwood', c1:'#BCB6A6', c2:'#ACA696', c3:'#9C9686', label:'グレーウッド CF' },
+    { id:'se-4511', name:'SE-4511', maker:'シンコール', type:'cftile', c1:'#ECE6DE', c2:'#D4CEC6', c3:'#E0DAD2', label:'ホワイトタイル CF' },
+    { id:'se-4512', name:'SE-4512', maker:'シンコール', type:'cftile', c1:'#DCD4CA', c2:'#C4BCB2', c3:'#D0C8BE', label:'ベージュタイル CF' },
+    { id:'se-4513', name:'SE-4513', maker:'シンコール', type:'cftile', c1:'#C68060', c2:'#AE6840', c3:'#BA7450', label:'テラコッタ CF' },
   ],
   '塗料': [
     { id:'p1', name:'ピュアホワイト', maker:'FARROW&BALL', type:'solid', c:'#F8F8F4' },
@@ -391,12 +481,208 @@ const catalog = {
   ],
 };
 
+// ===== Seeded random for consistent texture =====
+function seededRandom(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 1664525 + 1013904223) & 0xFFFFFFFF;
+    return (s >>> 0) / 0xFFFFFFFF;
+  };
+}
+
+// ===== Draw woven texture (織物調) =====
+function drawWoven(ctx, x, y, w, h, c, c2) {
+  const baseAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = baseAlpha;
+  ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
+  const rng = seededRandom(c.charCodeAt(1)*137 + c.charCodeAt(3)*53);
+  for (let iy = 0; iy < h; iy += 2) {
+    ctx.strokeStyle = c2;
+    ctx.globalAlpha = baseAlpha * (0.2 + rng() * 0.3);
+    ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.moveTo(x, y+iy); ctx.lineTo(x+w, y+iy); ctx.stroke();
+  }
+  for (let ix = 0; ix < w; ix += 2) {
+    ctx.strokeStyle = c2;
+    ctx.globalAlpha = baseAlpha * (0.15 + rng() * 0.25);
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(x+ix, y); ctx.lineTo(x+ix, y+h); ctx.stroke();
+  }
+  ctx.globalAlpha = baseAlpha * 0.03;
+  for (let i = 0; i < (w * h) / 40; i++) {
+    const px = x + rng() * w, py = y + rng() * h;
+    ctx.fillStyle = rng() > 0.5 ? '#FFF' : '#000';
+    ctx.fillRect(px, py, 1, 1);
+  }
+  ctx.globalAlpha = baseAlpha;
+}
+
+// ===== Draw stone texture (石目調) =====
+function drawStone(ctx, x, y, w, h, c, c2, c3) {
+  const baseAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = baseAlpha;
+  ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
+  const rng = seededRandom(c.charCodeAt(2)*211 + c.charCodeAt(4)*67);
+  for (let i = 0; i < Math.max(20, (w*h)/600); i++) {
+    const px = x + rng() * w, py = y + rng() * h;
+    const r = 8 + rng() * 25;
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, r);
+    grad.addColorStop(0, rng() > 0.5 ? c2 : c3);
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = baseAlpha * (0.15 + rng() * 0.2);
+    ctx.fillRect(px - r, py - r, r * 2, r * 2);
+  }
+  ctx.globalAlpha = baseAlpha * 0.06;
+  for (let i = 0; i < (w * h) / 20; i++) {
+    const px = x + rng() * w, py = y + rng() * h;
+    ctx.fillStyle = rng() > 0.5 ? c2 : c3;
+    ctx.fillRect(px, py, rng() * 2 + 0.5, rng() * 2 + 0.5);
+  }
+  ctx.globalAlpha = baseAlpha * 0.06;
+  ctx.strokeStyle = c3; ctx.lineWidth = 0.5;
+  for (let i = 0; i < 5; i++) {
+    ctx.beginPath();
+    let vx = x + rng() * w, vy = y + rng() * h;
+    ctx.moveTo(vx, vy);
+    for (let j = 0; j < 6; j++) {
+      vx += (rng() - 0.5) * 40; vy += (rng() - 0.5) * 40;
+      ctx.lineTo(vx, vy);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = baseAlpha;
+}
+
+// ===== Draw plaster texture (塗り壁調) =====
+function drawPlaster(ctx, x, y, w, h, c, c2) {
+  const baseAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = baseAlpha;
+  ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
+  const rng = seededRandom(c.charCodeAt(1)*97 + c.charCodeAt(5)*31);
+  ctx.globalAlpha = baseAlpha * 0.08;
+  for (let i = 0; i < Math.max(15, (w*h)/800); i++) {
+    const sx = x + rng() * w, sy = y + rng() * h;
+    const angle = rng() * Math.PI;
+    const len = 20 + rng() * 50;
+    ctx.strokeStyle = rng() > 0.5 ? c2 : c;
+    ctx.lineWidth = 1 + rng() * 3;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo(
+      sx + Math.cos(angle) * len * 0.5 + (rng()-0.5)*10,
+      sy + Math.sin(angle) * len * 0.5 + (rng()-0.5)*10,
+      sx + Math.cos(angle) * len,
+      sy + Math.sin(angle) * len
+    );
+    ctx.stroke();
+  }
+  ctx.globalAlpha = baseAlpha * 0.04;
+  for (let i = 0; i < (w * h) / 25; i++) {
+    const px = x + rng() * w, py = y + rng() * h;
+    ctx.fillStyle = rng() > 0.5 ? '#FFF' : c2;
+    ctx.fillRect(px, py, rng() + 0.5, rng() + 0.5);
+  }
+  ctx.globalAlpha = baseAlpha;
+}
+
+// ===== Draw CF wood texture (CF木目調) =====
+function drawCFWood(ctx, x, y, w, h, c1, c2, c3) {
+  const baseAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = baseAlpha;
+  ctx.fillStyle = c1; ctx.fillRect(x, y, w, h);
+  const rng = seededRandom(c1.charCodeAt(1)*179 + c1.charCodeAt(3)*61);
+  const plankH = Math.max(18, h / 8);
+  for (let py = 0; py < h; py += plankH) {
+    const shade = rng() > 0.5 ? c2 : c1;
+    ctx.fillStyle = shade;
+    ctx.globalAlpha = baseAlpha * (0.15 + rng() * 0.15);
+    ctx.fillRect(x, y + py, w, plankH);
+    ctx.globalAlpha = baseAlpha * 0.25;
+    ctx.strokeStyle = c3; ctx.lineWidth = 0.6;
+    const grainCount = 4 + Math.floor(rng() * 4);
+    for (let g = 0; g < grainCount; g++) {
+      const gy = y + py + (g + 0.5) * (plankH / grainCount);
+      ctx.beginPath(); ctx.moveTo(x, gy);
+      for (let gx = 0; gx < w; gx += 8) {
+        ctx.lineTo(x + gx, gy + Math.sin(gx * 0.02 + rng() * 6) * 1.5 + (rng() - 0.5) * 0.8);
+      }
+      ctx.stroke();
+    }
+    if (rng() > 0.85) {
+      const kx = x + 10 + rng() * (w - 20), ky = y + py + plankH * 0.5;
+      const kr = 2 + rng() * 3;
+      const grad = ctx.createRadialGradient(kx, ky, 0, kx, ky, kr);
+      grad.addColorStop(0, c3); grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad; ctx.globalAlpha = baseAlpha * 0.3;
+      ctx.beginPath(); ctx.arc(kx, ky, kr, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = c3; ctx.globalAlpha = baseAlpha * 0.15; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, y + py); ctx.lineTo(x + w, y + py); ctx.stroke();
+  }
+  ctx.globalAlpha = baseAlpha;
+}
+
+// ===== Draw CF tile texture (CFタイル調) =====
+function drawCFTile(ctx, x, y, w, h, c1, c2, c3) {
+  const baseAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = baseAlpha;
+  ctx.fillStyle = c1; ctx.fillRect(x, y, w, h);
+  const rng = seededRandom(c1.charCodeAt(2)*139 + c1.charCodeAt(4)*43);
+  const ts = Math.max(24, Math.min(w, h) / 6);
+  for (let ty2 = 0; ty2 < h; ty2 += ts) {
+    for (let tx2 = 0; tx2 < w; tx2 += ts) {
+      const shade = [c1, c2, c3][Math.floor(rng() * 3)];
+      ctx.fillStyle = shade;
+      ctx.globalAlpha = baseAlpha * (0.12 + rng() * 0.1);
+      ctx.fillRect(x + tx2 + 1, y + ty2 + 1, ts - 2, ts - 2);
+      ctx.globalAlpha = baseAlpha * 0.04;
+      for (let n = 0; n < 8; n++) {
+        ctx.fillStyle = rng() > 0.5 ? '#FFF' : c2;
+        ctx.fillRect(x + tx2 + rng() * ts, y + ty2 + rng() * ts, rng() * 2, rng() * 2);
+      }
+    }
+  }
+  ctx.globalAlpha = baseAlpha * 0.3;
+  ctx.strokeStyle = c2; ctx.lineWidth = 1.5;
+  for (let gx = ts; gx < w; gx += ts) {
+    ctx.beginPath(); ctx.moveTo(x + gx, y); ctx.lineTo(x + gx, y + h); ctx.stroke();
+  }
+  for (let gy = ts; gy < h; gy += ts) {
+    ctx.beginPath(); ctx.moveTo(x, y + gy); ctx.lineTo(x + w, y + gy); ctx.stroke();
+  }
+  ctx.globalAlpha = baseAlpha;
+}
+
+// ===== Draw CF stone texture (CFストーン調) =====
+function drawCFStone(ctx, x, y, w, h, c1, c2, c3) {
+  const baseAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = baseAlpha;
+  ctx.fillStyle = c1; ctx.fillRect(x, y, w, h);
+  const rng = seededRandom(c1.charCodeAt(1)*167 + c1.charCodeAt(3)*89);
+  for (let i = 0; i < Math.max(30, (w*h)/400); i++) {
+    const px = x + rng() * w, py = y + rng() * h;
+    const r = 5 + rng() * 20;
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, r);
+    grad.addColorStop(0, [c1, c2, c3][Math.floor(rng()*3)]);
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = baseAlpha * (0.1 + rng() * 0.15);
+    ctx.fillRect(px - r, py - r, r * 2, r * 2);
+  }
+  ctx.globalAlpha = baseAlpha * 0.05;
+  for (let i = 0; i < (w * h) / 30; i++) {
+    ctx.fillStyle = [c2, c3, '#FFF'][Math.floor(rng()*3)];
+    ctx.fillRect(x + rng() * w, y + rng() * h, rng() + 0.5, rng() + 0.5);
+  }
+  ctx.globalAlpha = baseAlpha;
+}
+
 // ===== Draw swatch pattern =====
 function drawSwatch(swCtx, mat, size) {
   swCtx.clearRect(0, 0, size, size);
   const { type } = mat;
   if (type === 'image') {
-    // Image-based texture: draw scaled to fill swatch
     if (mat.img && mat.img.complete) {
       swCtx.drawImage(mat.img, 0, 0, size, size);
     }
@@ -404,6 +690,18 @@ function drawSwatch(swCtx, mat, size) {
   }
   if (type === 'solid') {
     swCtx.fillStyle = mat.c; swCtx.fillRect(0, 0, size, size);
+  } else if (type === 'woven') {
+    drawWoven(swCtx, 0, 0, size, size, mat.c, mat.c2);
+  } else if (type === 'stone') {
+    drawStone(swCtx, 0, 0, size, size, mat.c, mat.c2, mat.c3);
+  } else if (type === 'plaster') {
+    drawPlaster(swCtx, 0, 0, size, size, mat.c, mat.c2);
+  } else if (type === 'cfwood') {
+    drawCFWood(swCtx, 0, 0, size, size, mat.c1, mat.c2, mat.c3);
+  } else if (type === 'cftile') {
+    drawCFTile(swCtx, 0, 0, size, size, mat.c1, mat.c2, mat.c3);
+  } else if (type === 'cfstone') {
+    drawCFStone(swCtx, 0, 0, size, size, mat.c1, mat.c2, mat.c3);
   } else if (type === 'wood') {
     swCtx.fillStyle = mat.c1; swCtx.fillRect(0, 0, size, size);
     for (let i = 0; i < size; i += 5) {
@@ -469,6 +767,18 @@ function applyMaterial(ctx, mat, x, y, w, h) {
   }
   if (type === 'solid') {
     ctx.fillStyle = mat.c; ctx.fillRect(x,y,w,h);
+  } else if (type === 'woven') {
+    drawWoven(ctx, x, y, w, h, mat.c, mat.c2);
+  } else if (type === 'stone') {
+    drawStone(ctx, x, y, w, h, mat.c, mat.c2, mat.c3);
+  } else if (type === 'plaster') {
+    drawPlaster(ctx, x, y, w, h, mat.c, mat.c2);
+  } else if (type === 'cfwood') {
+    drawCFWood(ctx, x, y, w, h, mat.c1, mat.c2, mat.c3);
+  } else if (type === 'cftile') {
+    drawCFTile(ctx, x, y, w, h, mat.c1, mat.c2, mat.c3);
+  } else if (type === 'cfstone') {
+    drawCFStone(ctx, x, y, w, h, mat.c1, mat.c2, mat.c3);
   } else if (type === 'carpet') {
     ctx.fillStyle = mat.c; ctx.fillRect(x,y,w,h);
     for (let i=0;i<300;i++) {
@@ -582,7 +892,7 @@ function buildMatGrid() {
     sw.onclick = () => selectMat(mat);
     const lbl = document.createElement('div');
     lbl.className = 'mat-label';
-    lbl.textContent = mat.name;
+    lbl.textContent = mat.label ? mat.name + '\n' + mat.label : mat.name;
     item.appendChild(sw); item.appendChild(lbl);
     grid.appendChild(item);
   });
@@ -595,7 +905,7 @@ function selectMat(mat) {
   const allMats = catalog[currentCat];
   const idx = allMats.findIndex(m=>m.id===mat.id);
   if (idx >= 0) items[idx].querySelector('.mat-swatch').classList.add('selected');
-  document.getElementById('selName').textContent = mat.name;
+  document.getElementById('selName').textContent = mat.label ? mat.name + ' ' + mat.label : mat.name;
   document.getElementById('selHint').textContent = mat.maker + ' ／ ' + currentCat;
   setStatus('「' + mat.name + '」を選択。「範囲を選択して適用」を押してクリックで範囲を指定してください。');
 }
@@ -1019,7 +1329,8 @@ async function lookupModel() {
   }
 
   if (found) {
-    result.textContent = '✓ 見つかりました：' + found.mat.name + '（' + found.cat + '）';
+    const displayName = found.mat.label ? found.mat.name + ' ' + found.mat.label : found.mat.name;
+    result.textContent = '✓ 見つかりました：' + displayName + '（' + found.mat.maker + ' ／ ' + found.cat + '）';
     currentCat = found.cat;
     buildCatBar(); buildMatGrid(); selectMat(found.mat);
   } else {
