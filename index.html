@@ -425,6 +425,8 @@ input[type=file] { display: none; }
 <script>
 // ===== State =====
 let originalImg = null;
+let pristineImg = null;  // 最初にアップロードした写真（リセット用）
+let editHistory = [];    // 編集操作の元に戻す用スナップショット
 let layers = [];
 let selectedMat = null;
 let opacity = 0.80;
@@ -1076,6 +1078,8 @@ dropZone.addEventListener('click', () => document.getElementById('fileInput').cl
 
 function loadImage(img) {
   originalImg = img;
+  pristineImg = img;
+  editHistory = [];
   layers = [];
   const wrap = document.getElementById('canvas-wrap');
   const maxW = wrap.clientWidth - 32;
@@ -1292,6 +1296,17 @@ function updateOpacity(val) {
 }
 
 function undoLast() {
+  // First try undoing an edit (white fill / erase)
+  if (editHistory.length > 0) {
+    const prev = editHistory.pop();
+    originalImg = prev;
+    layers = [];
+    redraw();
+    document.getElementById('undoBtn').disabled = (editHistory.length === 0 && layers.length === 0);
+    updateHistoryUI();
+    setStatus('編集を元に戻しました');
+    return;
+  }
   if (!layers.length) return;
   layers.pop();
   redraw();
@@ -1301,7 +1316,9 @@ function undoLast() {
 }
 
 function resetAll() {
-  if (!originalImg) return;
+  if (!pristineImg) return;
+  originalImg = pristineImg;
+  editHistory = [];
   layers = [];
   redraw();
   document.getElementById('undoBtn').disabled = true;
@@ -1759,10 +1776,14 @@ function magicErase() {
   setStatus('選択範囲を消去しました');
 }
 
-// --- Commit canvas state to originalImg ---
+// --- Commit canvas state to originalImg (with undo snapshot) ---
 function commitToOriginal() {
+  editHistory.push(originalImg); // save previous state for undo
   const tmpImg = new Image();
-  tmpImg.onload = () => { originalImg = tmpImg; };
+  tmpImg.onload = () => {
+    originalImg = tmpImg;
+    document.getElementById('undoBtn').disabled = false;
+  };
   tmpImg.src = mainCanvas.toDataURL();
 }
 
@@ -1813,28 +1834,24 @@ let lastBrushPos = null;
 // --- Draw brush cursor circle on overlay ---
 function drawBrushCursor(pos) {
   const r = parseInt(document.getElementById('brushSize').value);
-  const rect = mainCanvas.getBoundingClientRect();
-  const scaleX = rect.width / mainCanvas.width;
-  // Draw on overlay canvas (already positioned on top of main)
   showEditMaskOverlay();
-  // Draw cursor circle
+  // Outer white circle
   octx.beginPath();
   octx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
   octx.strokeStyle = 'rgba(255,255,255,0.9)';
-  octx.lineWidth = 2;
+  octx.lineWidth = 2.5;
   octx.stroke();
+  // Inner blue circle
   octx.beginPath();
   octx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-  octx.strokeStyle = 'rgba(100,140,255,0.7)';
+  octx.strokeStyle = 'rgba(100,140,255,0.6)';
   octx.lineWidth = 1;
   octx.stroke();
-  // Crosshair in center
-  octx.strokeStyle = 'rgba(255,255,255,0.6)';
-  octx.lineWidth = 1;
+  // Small center dot
   octx.beginPath();
-  octx.moveTo(pos.x - 4, pos.y); octx.lineTo(pos.x + 4, pos.y);
-  octx.moveTo(pos.x, pos.y - 4); octx.lineTo(pos.x, pos.y + 4);
-  octx.stroke();
+  octx.arc(pos.x, pos.y, 2, 0, Math.PI * 2);
+  octx.fillStyle = 'rgba(255,255,255,0.8)';
+  octx.fill();
 }
 
 function finishBrushCount() {
