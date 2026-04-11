@@ -266,16 +266,9 @@ input[type=file] { display: none; }
           <button class="cat-btn active" onclick="setCategory('wall',this)">壁クロス</button>
           <button class="cat-btn" onclick="setCategory('floor',this)">床材</button>
         </div>
-        <!-- Step 2: Pattern -->
-        <div class="sel-area" style="border-top:none;padding-top:4px;">
-          <div class="sel-label">柄を選択</div>
-        </div>
+        <!-- Texture grid -->
         <div class="mat-grid" id="patternGrid" style="grid-template-columns:repeat(3,1fr);"></div>
-        <!-- Step 3: Color -->
-        <div class="sel-area">
-          <div class="sel-label">色を選択</div>
-        </div>
-        <div class="mat-grid" id="colorGrid" style="grid-template-columns:repeat(5,1fr);gap:4px;"></div>
+        <div id="colorGrid" style="display:none;"></div>
         <!-- Selected info -->
         <div class="sel-area">
           <div class="sel-card">
@@ -421,6 +414,7 @@ input[type=file] { display: none; }
   </div>
 </div>
 
+<script src="textures.js"></script>
 <script>
 // ===== State =====
 let originalImg = null;
@@ -441,466 +435,63 @@ const ctx = mainCanvas.getContext('2d');
 const overlayCanvas = document.getElementById('overlay-canvas');
 const octx = overlayCanvas.getContext('2d');
 
-// ===== Texture Tile System =====
-const TILE_SIZE = 256;
+// ===== Real Texture System (photo-based) =====
 const tileCache = {};
 
-function seededRandom(seed) {
-  let s = seed;
-  return function() { s = (s * 1664525 + 1013904223) & 0xFFFFFFFF; return (s >>> 0) / 0xFFFFFFFF; };
-}
-
-// Generate grayscale detail map (0=dark/recessed, 255=bright/raised)
-function genWovenTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  // Base mid-gray
-  x.fillStyle = '#808080'; x.fillRect(0, 0, S, S);
-  // Horizontal threads
-  for (let y = 0; y < S; y += 3) {
-    const bright = 110 + rng() * 40;
-    x.fillStyle = `rgb(${bright},${bright},${bright})`;
-    x.fillRect(0, y, S, 1.5);
-  }
-  // Vertical threads (weave over/under)
-  for (let ix = 0; ix < S; ix += 3) {
-    for (let iy = 0; iy < S; iy += 6) {
-      const offset = ((ix / 3) | 0) % 2 === 0 ? 0 : 3;
-      const bright = 100 + rng() * 50;
-      x.fillStyle = `rgb(${bright},${bright},${bright})`;
-      x.fillRect(ix, iy + offset, 1.5, 3);
+// === Load textures from TEXTURE_DATA (textures.js) ===
+function loadTextureImages() {
+  const textures = { wall: [], floor: [] };
+  if (typeof TEXTURE_DATA === 'undefined') return textures;
+  for (const cat of ['wall', 'floor']) {
+    if (!TEXTURE_DATA[cat]) continue;
+    const catData = TEXTURE_DATA[cat];
+    // Group by category name
+    const groups = {};
+    catData.forEach(t => {
+      if (!groups[t.category]) groups[t.category] = [];
+      groups[t.category].push(t);
+    });
+    // Flatten into pattern list with preloaded images
+    for (const [groupName, items] of Object.entries(groups)) {
+      items.forEach(item => {
+        const img = new Image();
+        img.src = item.src;
+        textures[cat].push({
+          id: item.id,
+          name: item.name,
+          category: groupName,
+          img: img,
+          src: item.src,
+        });
+      });
     }
   }
-  // Soft mottled variation
-  for (let i = 0; i < 30; i++) {
-    const px = rng()*S, py = rng()*S, r = 15 + rng()*30;
-    const grad = x.createRadialGradient(px, py, 0, px, py, r);
-    const v = 100 + rng() * 60;
-    grad.addColorStop(0, `rgba(${v},${v},${v},0.15)`);
-    grad.addColorStop(1, 'transparent');
-    x.fillStyle = grad; x.fillRect(px-r, py-r, r*2, r*2);
-  }
-  return c;
+  return textures;
 }
 
-function genStoneTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  x.fillStyle = '#909090'; x.fillRect(0, 0, S, S);
-  // Large organic patches
-  for (let i = 0; i < 60; i++) {
-    const px = rng()*S, py = rng()*S, r = 10 + rng()*50;
-    const grad = x.createRadialGradient(px, py, 0, px, py, r);
-    const v = 70 + rng() * 80;
-    grad.addColorStop(0, `rgba(${v},${v},${v},0.2)`);
-    grad.addColorStop(0.7, 'transparent');
-    x.fillStyle = grad; x.fillRect(px-r, py-r, r*2, r*2);
-  }
-  // Fine veins
-  x.globalAlpha = 0.1;
-  for (let i = 0; i < 8; i++) {
-    x.strokeStyle = rng() > 0.5 ? '#666' : '#aaa';
-    x.lineWidth = 0.5 + rng();
-    x.beginPath();
-    let vx = rng()*S, vy = rng()*S;
-    x.moveTo(vx, vy);
-    for (let j = 0; j < 10; j++) { vx += (rng()-0.5)*40; vy += (rng()-0.5)*40; x.lineTo(vx, vy); }
-    x.stroke();
-  }
-  // Fine grain
-  x.globalAlpha = 0.05;
-  for (let i = 0; i < 2000; i++) {
-    const v = rng() > 0.5 ? 200 : 60;
-    x.fillStyle = `rgb(${v},${v},${v})`;
-    x.fillRect(rng()*S, rng()*S, 1, 1);
-  }
-  x.globalAlpha = 1;
-  return c;
-}
+const TEXTURES = loadTextureImages();
 
-function genPlasterTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  x.fillStyle = '#8a8a8a'; x.fillRect(0, 0, S, S);
-  // Soft mottled base
-  for (let i = 0; i < 40; i++) {
-    const px = rng()*S, py = rng()*S, r = 20 + rng()*40;
-    const grad = x.createRadialGradient(px, py, 0, px, py, r);
-    const v = 80 + rng() * 60;
-    grad.addColorStop(0, `rgba(${v},${v},${v},0.12)`);
-    grad.addColorStop(1, 'transparent');
-    x.fillStyle = grad; x.fillRect(px-r, py-r, r*2, r*2);
-  }
-  // Trowel strokes
-  x.globalAlpha = 0.06;
-  for (let i = 0; i < 20; i++) {
-    const sx = rng()*S, sy = rng()*S, a = rng()*Math.PI, len = 40 + rng()*60;
-    x.strokeStyle = rng()>0.5 ? '#999' : '#777';
-    x.lineWidth = 2 + rng()*4;
-    x.beginPath(); x.moveTo(sx, sy);
-    x.quadraticCurveTo(sx+Math.cos(a)*len*0.5+(rng()-0.5)*15, sy+Math.sin(a)*len*0.5+(rng()-0.5)*15, sx+Math.cos(a)*len, sy+Math.sin(a)*len);
-    x.stroke();
-  }
-  x.globalAlpha = 0.03;
-  for (let i = 0; i < 3000; i++) {
-    x.fillStyle = rng()>0.5 ? '#bbb' : '#666';
-    x.fillRect(rng()*S, rng()*S, 1, 1);
-  }
-  x.globalAlpha = 1;
-  return c;
-}
-
-function genWoodGrainTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  x.fillStyle = '#8a8070'; x.fillRect(0, 0, S, S);
-  // Vertical grain lines
-  for (let ix = 0; ix < S; ix += 2) {
-    const v = 100 + rng()*60;
-    x.strokeStyle = `rgba(${v},${v-10},${v-20},0.3)`;
-    x.lineWidth = 0.5 + rng()*0.5;
-    x.beginPath(); x.moveTo(ix, 0);
-    for (let iy = 0; iy < S; iy += 10) x.lineTo(ix + (rng()-0.5)*2, iy);
-    x.lineTo(ix, S); x.stroke();
-  }
-  // Knots
-  for (let i = 0; i < 2; i++) {
-    if (rng() > 0.5) continue;
-    const kx = rng()*S, ky = rng()*S, kr = 5 + rng()*8;
-    const grad = x.createRadialGradient(kx, ky, 0, kx, ky, kr);
-    grad.addColorStop(0, 'rgba(60,50,40,0.4)');
-    grad.addColorStop(1, 'transparent');
-    x.fillStyle = grad;
-    x.beginPath(); x.arc(kx, ky, kr, 0, Math.PI*2); x.fill();
-  }
-  return c;
-}
-
-function genPlainTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  x.fillStyle = '#8c8c8c'; x.fillRect(0, 0, S, S);
-  // Very subtle paper texture
-  x.globalAlpha = 0.04;
-  for (let i = 0; i < 5000; i++) {
-    x.fillStyle = rng()>0.5 ? '#bbb' : '#666';
-    x.fillRect(rng()*S, rng()*S, 1, 1);
-  }
-  for (let i = 0; i < 15; i++) {
-    const px = rng()*S, py = rng()*S, r = 20 + rng()*40;
-    const grad = x.createRadialGradient(px, py, 0, px, py, r);
-    const v = 100 + rng()*50;
-    grad.addColorStop(0, `rgba(${v},${v},${v},0.3)`);
-    grad.addColorStop(1, 'transparent');
-    x.fillStyle = grad; x.fillRect(px-r, py-r, r*2, r*2);
-  }
-  x.globalAlpha = 1;
-  return c;
-}
-
-function genWallTileTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  const ts = S / 4;
-  x.fillStyle = '#909090'; x.fillRect(0, 0, S, S);
-  // Individual tiles with variation
-  for (let ty = 0; ty < S; ty += ts) {
-    for (let tx = 0; tx < S; tx += ts) {
-      const v = 120 + rng()*40;
-      x.fillStyle = `rgb(${v},${v},${v})`;
-      x.fillRect(tx+1.5, ty+1.5, ts-3, ts-3);
-      // Subtle surface texture per tile
-      x.globalAlpha = 0.04;
-      for (let n = 0; n < 20; n++) {
-        x.fillStyle = rng()>0.5 ? '#eee' : '#888';
-        x.fillRect(tx+rng()*ts, ty+rng()*ts, 1, 1);
-      }
-      x.globalAlpha = 1;
-    }
-  }
-  // Grout lines (darker)
-  x.strokeStyle = '#666'; x.lineWidth = 2;
-  for (let g = ts; g < S; g += ts) {
-    x.beginPath(); x.moveTo(g, 0); x.lineTo(g, S); x.stroke();
-    x.beginPath(); x.moveTo(0, g); x.lineTo(S, g); x.stroke();
-  }
-  return c;
-}
-
-function genBrickTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  const bh = S/5, bw = S/2;
-  x.fillStyle = '#777'; x.fillRect(0, 0, S, S); // mortar
-  for (let row = 0; row < 6; row++) {
-    const off = row % 2 === 0 ? 0 : bw/2;
-    for (let col = -1; col < 3; col++) {
-      const v = 110 + rng()*50;
-      x.fillStyle = `rgb(${v},${v-5},${v-10})`;
-      x.fillRect(off + col*bw + 2, row*bh + 2, bw - 4, bh - 4);
-    }
-  }
-  return c;
-}
-
-function genOakTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  const plankH = S / 3;
-  x.fillStyle = '#888070'; x.fillRect(0, 0, S, S);
-  for (let py = 0; py < S; py += plankH) {
-    const base = 100 + rng()*40;
-    x.fillStyle = `rgb(${base},${base-5},${base-15})`; x.fillRect(0, py+1, S, plankH-2);
-    // Grain lines
-    x.globalAlpha = 0.2;
-    for (let g = 0; g < plankH; g += 3 + rng()*2) {
-      const v = 80 + rng()*60;
-      x.strokeStyle = `rgb(${v},${v-5},${v-10})`; x.lineWidth = 0.6 + rng()*0.5;
-      x.beginPath(); x.moveTo(0, py+g);
-      for (let gx = 0; gx < S; gx += 12) x.lineTo(gx, py+g + Math.sin(gx*0.03+rng()*6)*1.5+(rng()-0.5));
-      x.lineTo(S, py+g); x.stroke();
-    }
-    x.globalAlpha = 1;
-    // Plank gap
-    x.strokeStyle = 'rgba(50,40,30,0.3)'; x.lineWidth = 1.5;
-    x.beginPath(); x.moveTo(0, py); x.lineTo(S, py); x.stroke();
-  }
-  return c;
-}
-
-function genWalnutTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  const plankH = S / 3;
-  x.fillStyle = '#706050'; x.fillRect(0, 0, S, S);
-  for (let py = 0; py < S; py += plankH) {
-    const base = 80 + rng()*30;
-    x.fillStyle = `rgb(${base},${base-10},${base-20})`; x.fillRect(0, py+1, S, plankH-2);
-    x.globalAlpha = 0.25;
-    for (let g = 0; g < plankH; g += 2 + rng()*3) {
-      const v = 60 + rng()*50;
-      x.strokeStyle = `rgb(${v},${v-8},${v-15})`; x.lineWidth = 0.5 + rng()*0.8;
-      x.beginPath(); x.moveTo(0, py+g);
-      for (let gx = 0; gx < S; gx += 10) x.lineTo(gx, py+g + Math.sin(gx*0.025+rng()*6)*2+(rng()-0.5)*0.5);
-      x.lineTo(S, py+g); x.stroke();
-    }
-    x.globalAlpha = 1;
-    x.strokeStyle = 'rgba(30,20,10,0.4)'; x.lineWidth = 1.5;
-    x.beginPath(); x.moveTo(0, py); x.lineTo(S, py); x.stroke();
-  }
-  return c;
-}
-
-function genMarbleTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  x.fillStyle = '#a0a0a0'; x.fillRect(0, 0, S, S);
-  for (let i = 0; i < 80; i++) {
-    const px = rng()*S, py = rng()*S, r = 10 + rng()*50;
-    const grad = x.createRadialGradient(px, py, 0, px, py, r);
-    const v = 80 + rng()*80;
-    grad.addColorStop(0, `rgba(${v},${v},${v},0.15)`);
-    grad.addColorStop(0.5, 'transparent');
-    x.fillStyle = grad; x.fillRect(px-r, py-r, r*2, r*2);
-  }
-  // Bold veins
-  x.globalAlpha = 0.15;
-  for (let i = 0; i < 5; i++) {
-    x.strokeStyle = rng()>0.5 ? '#555' : '#bbb'; x.lineWidth = 1 + rng()*2;
-    x.beginPath();
-    let vx = rng()*S, vy = rng()*S; x.moveTo(vx, vy);
-    for (let j = 0; j < 12; j++) { vx+=(rng()-0.5)*50; vy+=(rng()-0.5)*50; x.lineTo(vx,vy); }
-    x.stroke();
-  }
-  x.globalAlpha = 1;
-  return c;
-}
-
-function genConcreteTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  x.fillStyle = '#888'; x.fillRect(0, 0, S, S);
-  for (let i = 0; i < 50; i++) {
-    const px = rng()*S, py = rng()*S, r = 15+rng()*35;
-    const grad = x.createRadialGradient(px,py,0,px,py,r);
-    const v = 100+rng()*50;
-    grad.addColorStop(0, `rgba(${v},${v},${v},0.1)`);
-    grad.addColorStop(1, 'transparent');
-    x.fillStyle = grad; x.fillRect(px-r,py-r,r*2,r*2);
-  }
-  x.globalAlpha = 0.06;
-  for (let i = 0; i < 4000; i++) {
-    x.fillStyle = rng()>0.5 ? '#bbb' : '#555';
-    x.fillRect(rng()*S, rng()*S, rng()+0.5, rng()+0.5);
-  }
-  x.globalAlpha = 1;
-  return c;
-}
-
-function genHerringboneTile(seed) {
-  const S = TILE_SIZE, c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const x = c.getContext('2d'), rng = seededRandom(seed);
-  x.fillStyle = '#666'; x.fillRect(0, 0, S, S);
-  const pw = 16, ph = 48;
-  for (let row = -1; row < S/ph+1; row++) {
-    for (let col = -1; col < S/pw+1; col++) {
-      const isEven = (row + col) % 2 === 0;
-      const v = 110 + rng()*50;
-      x.fillStyle = `rgb(${v},${v-5},${v-15})`;
-      x.save();
-      x.translate(col*pw*2 + (row%2)*pw, row*ph/2);
-      if (isEven) {
-        x.fillRect(1, 1, pw-2, ph-2);
-      } else {
-        x.rotate(Math.PI/2);
-        x.fillRect(1, -pw+1, ph-2, pw-2);
-      }
-      x.restore();
-    }
-  }
-  return c;
-}
-
-// === Color Tinting ===
-function tintTile(baseTile, r, g, b) {
-  const key = baseTile._id + '_' + r + '_' + g + '_' + b;
-  if (tileCache[key]) return tileCache[key];
-  const S = baseTile.width;
-  const c = document.createElement('canvas');
-  c.width = S; c.height = S;
-  const ctx2 = c.getContext('2d');
-  // Fill with target color
-  ctx2.fillStyle = `rgb(${r},${g},${b})`; ctx2.fillRect(0, 0, S, S);
-  // Multiply with grayscale detail — creates realistic depth
-  ctx2.globalCompositeOperation = 'multiply';
-  ctx2.drawImage(baseTile, 0, 0);
-  ctx2.globalCompositeOperation = 'source-over';
-  // Convert to Image for tiling
-  const img = new Image();
-  img.src = c.toDataURL();
-  const mat = { type: 'image', img, tileSize: 160 };
-  tileCache[key] = mat;
-  return mat;
-}
-
-// === Pattern & Color Definitions ===
-const PATTERNS = {
-  wall: [
-    { id: 'woven', name: '織物調', fn: genWovenTile },
-    { id: 'stone', name: '石目調', fn: genStoneTile },
-    { id: 'plaster', name: '塗り壁調', fn: genPlasterTile },
-    { id: 'woodgrain', name: '木目調', fn: genWoodGrainTile },
-    { id: 'plain', name: '無地', fn: genPlainTile },
-    { id: 'walltile', name: 'タイル調', fn: genWallTileTile },
-    { id: 'brick', name: 'レンガ調', fn: genBrickTile },
-  ],
-  floor: [
-    { id: 'oak', name: 'オーク', fn: genOakTile },
-    { id: 'walnut', name: 'ウォールナット', fn: genWalnutTile },
-    { id: 'marble', name: '大理石', fn: genMarbleTile },
-    { id: 'concrete', name: 'コンクリート', fn: genConcreteTile },
-    { id: 'herringbone', name: 'ヘリンボーン', fn: genHerringboneTile },
-  ],
-};
-
-const COLORS = {
-  wall: [
-    { name:'ピュアホワイト', r:250, g:248, b:245 },
-    { name:'オフホワイト', r:242, g:238, b:228 },
-    { name:'アイボリー', r:240, g:232, b:215 },
-    { name:'クリーム', r:245, g:235, b:200 },
-    { name:'ライトベージュ', r:230, g:218, b:200 },
-    { name:'ベージュ', r:215, g:198, b:175 },
-    { name:'ウォームベージュ', r:205, g:185, b:160 },
-    { name:'サンドベージュ', r:200, g:180, b:155 },
-    { name:'モカ', r:180, g:155, b:130 },
-    { name:'ライトグレー', r:210, g:208, b:205 },
-    { name:'グレー', r:180, g:178, b:175 },
-    { name:'ミディアムグレー', r:150, g:148, b:145 },
-    { name:'ダークグレー', r:105, g:103, b:100 },
-    { name:'チャコール', r:72, g:72, b:70 },
-    { name:'ライトブラウン', r:185, g:155, b:120 },
-    { name:'ブラウン', r:150, g:115, b:80 },
-    { name:'ダークブラウン', r:95, g:65, b:40 },
-    { name:'アイスブルー', r:200, g:215, b:228 },
-    { name:'ライトブルー', r:175, g:200, b:225 },
-    { name:'スモーキーブルー', r:140, g:165, b:190 },
-    { name:'ネイビー', r:45, g:60, b:90 },
-    { name:'ミントグリーン', r:195, g:225, b:210 },
-    { name:'セージグリーン', r:165, g:188, b:165 },
-    { name:'モスグリーン', r:110, g:135, b:100 },
-    { name:'ライトピンク', r:240, g:218, b:218 },
-    { name:'ダスティピンク', r:212, g:175, b:175 },
-    { name:'ローズ', r:190, g:140, b:145 },
-    { name:'レモンイエロー', r:248, g:240, b:195 },
-    { name:'マスタード', r:200, g:165, b:60 },
-    { name:'ラベンダー', r:195, g:185, b:215 },
-    { name:'テラコッタ', r:195, g:120, b:80 },
-    { name:'ワインレッド', r:120, g:50, b:55 },
-  ],
-  floor: [
-    { name:'ホワイトウォッシュ', r:235, g:228, b:218 },
-    { name:'ライトナチュラル', r:220, g:195, b:160 },
-    { name:'ナチュラル', r:200, g:170, b:130 },
-    { name:'ハニー', r:195, g:155, b:100 },
-    { name:'ミディアム', r:170, g:130, b:85 },
-    { name:'ダークナチュラル', r:130, g:90, b:55 },
-    { name:'エスプレッソ', r:80, g:50, b:30 },
-    { name:'エボニー', r:50, g:35, b:25 },
-    { name:'グレーウォッシュ', r:180, g:175, b:170 },
-    { name:'ライトグレー', r:195, g:190, b:185 },
-    { name:'ミディアムグレー', r:150, g:145, b:140 },
-    { name:'ダークグレー', r:95, g:90, b:85 },
-    { name:'ホワイト', r:245, g:243, b:240 },
-    { name:'アイボリー', r:235, g:225, b:205 },
-    { name:'チェリー', r:165, g:90, b:60 },
-    { name:'マホガニー', r:120, g:60, b:40 },
-  ],
-};
 
 // === State ===
 let currentCategory = 'wall';
-let currentPattern = PATTERNS.wall[0];
-let currentColor = COLORS.wall[0];
-let baseTiles = {}; // cached grayscale tiles
-let currentCat = 'wall'; // compat
+let currentTexture = null;
+let currentCat = 'wall';
+const catalog = {};
 
-// === Generate or get cached base tile ===
-function getBaseTile(pattern) {
-  if (baseTiles[pattern.id]) return baseTiles[pattern.id];
-  const tile = pattern.fn(pattern.id.charCodeAt(0) * 137 + 42);
-  tile._id = pattern.id;
-  baseTiles[pattern.id] = tile;
-  return tile;
-}
-
-// === Build current material from pattern + color ===
-function buildMaterial() {
-  const base = getBaseTile(currentPattern);
-  const mat = tintTile(base, currentColor.r, currentColor.g, currentColor.b);
+// === Select a texture and build material ===
+function selectTexture(tex) {
+  currentTexture = tex;
   selectedMat = {
-    id: currentPattern.id + '_' + currentColor.name,
-    name: currentPattern.name + '／' + currentColor.name,
+    id: tex.id,
+    name: tex.name,
     maker: currentCategory === 'wall' ? 'クロス' : '床材',
     type: 'image',
-    img: mat.img,
-    tileSize: currentCategory === 'floor' ? 180 : 140,
+    img: tex.img,
+    tileSize: currentCategory === 'floor' ? 200 : 160,
   };
-  document.getElementById('selName').textContent = selectedMat.name;
-  document.getElementById('selHint').textContent = (currentCategory === 'wall' ? '壁クロス' : '床材') + ' ／ ' + currentPattern.name;
-  // Show apply-to-selection if editMask exists
+  document.getElementById('selName').textContent = tex.name;
+  document.getElementById('selHint').textContent = (currentCategory === 'wall' ? '壁クロス' : '床材') + ' ／ ' + tex.category;
+  buildTextureGrid(); // update selection highlight
   const btn = document.getElementById('applyToSelectionBtn');
   if (btn) btn.style.display = editMask ? '' : 'none';
 }
@@ -911,84 +502,72 @@ function setCategory(cat, el) {
   currentCat = cat;
   document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
   if (el) el.classList.add('active');
-  currentPattern = PATTERNS[cat][0];
-  currentColor = COLORS[cat][0];
-  buildPatternGrid();
-  buildColorGrid();
-  buildMaterial();
+  currentTexture = null;
+  buildTextureGrid();
 }
 
-function buildPatternGrid() {
+function buildTextureGrid() {
   const grid = document.getElementById('patternGrid');
   grid.innerHTML = '';
-  PATTERNS[currentCategory].forEach(pat => {
-    const item = document.createElement('div');
-    item.className = 'mat-item';
-    const sw = document.createElement('div');
-    sw.className = 'mat-swatch' + (pat.id === currentPattern.id ? ' selected' : '');
-    // Generate small preview
-    const base = getBaseTile(pat);
-    const preview = document.createElement('canvas');
-    preview.width = 60; preview.height = 60;
-    const pc = preview.getContext('2d');
-    // Tint with current color for preview
-    pc.fillStyle = `rgb(${currentColor.r},${currentColor.g},${currentColor.b})`;
-    pc.fillRect(0, 0, 60, 60);
-    pc.globalCompositeOperation = 'multiply';
-    pc.drawImage(base, 0, 0, 60, 60);
-    sw.appendChild(preview);
-    sw.onclick = () => {
-      currentPattern = pat;
-      buildPatternGrid();
-      buildMaterial();
-    };
-    const lbl = document.createElement('div');
-    lbl.className = 'mat-label';
-    lbl.textContent = pat.name;
-    item.appendChild(sw); item.appendChild(lbl);
-    grid.appendChild(item);
+  // Hide color grid (not needed with real textures)
+  document.getElementById('colorGrid').innerHTML = '';
+
+  const textures = TEXTURES[currentCategory] || [];
+  if (!textures.length) {
+    grid.innerHTML = '<div style="padding:16px;color:var(--text3);font-size:12px;">テクスチャが見つかりません</div>';
+    return;
+  }
+
+  // Group by category
+  const groups = {};
+  textures.forEach(t => {
+    if (!groups[t.category]) groups[t.category] = [];
+    groups[t.category].push(t);
   });
+
+  for (const [groupName, items] of Object.entries(groups)) {
+    // Group header
+    const header = document.createElement('div');
+    header.style.cssText = 'grid-column:1/-1;font-size:11px;font-weight:600;color:var(--text2);padding:6px 0 2px;border-bottom:1px solid var(--border);margin-bottom:2px;';
+    header.textContent = groupName;
+    grid.appendChild(header);
+
+    items.forEach(tex => {
+      const item = document.createElement('div');
+      item.className = 'mat-item';
+      const sw = document.createElement('div');
+      sw.className = 'mat-swatch' + (currentTexture && currentTexture.id === tex.id ? ' selected' : '');
+      const img = document.createElement('img');
+      img.src = tex.src;
+      img.alt = tex.name;
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+      sw.appendChild(img);
+      sw.onclick = () => selectTexture(tex);
+      const lbl = document.createElement('div');
+      lbl.className = 'mat-label';
+      lbl.textContent = tex.name;
+      item.appendChild(sw); item.appendChild(lbl);
+      grid.appendChild(item);
+    });
+  }
 }
 
-function buildColorGrid() {
-  const grid = document.getElementById('colorGrid');
-  grid.innerHTML = '';
-  COLORS[currentCategory].forEach(col => {
-    const sw = document.createElement('div');
-    sw.className = 'mat-swatch' + (col.name === currentColor.name ? ' selected' : '');
-    sw.style.cssText = 'aspect-ratio:1;cursor:pointer;background:rgb('+col.r+','+col.g+','+col.b+');border-radius:4px;';
-    sw.title = col.name;
-    sw.onclick = () => {
-      currentColor = col;
-      buildColorGrid();
-      buildPatternGrid(); // update pattern previews with new color
-      buildMaterial();
-    };
-    const lbl = document.createElement('div');
-    lbl.className = 'mat-label';
-    lbl.textContent = col.name;
-    const item = document.createElement('div');
-    item.className = 'mat-item';
-    item.appendChild(sw); item.appendChild(lbl);
-    grid.appendChild(item);
-  });
-}
-
-// compat: old catalog references
-const catalog = {};
+function buildCatBar() {}
+function buildMatGrid() { buildTextureGrid(); }
+function selectMat(mat) { selectedMat = mat; }
 
 // ===== Draw material on main canvas =====
 function applyMaterial(ctx, mat, x, y, w, h) {
   if (mat.type === 'image' && mat.img && mat.img.complete) {
-    const tileW = mat.tileSize || 140;
+    const tileW = mat.tileSize || 160;
     const tileH = tileW * (mat.img.height / mat.img.width);
     for (let ty = y; ty < y + h; ty += tileH) {
       for (let tx = x; tx < x + w; tx += tileW) {
         const dw = Math.min(tileW, x + w - tx);
         const dh = Math.min(tileH, y + h - ty);
-        const sw = (dw / tileW) * mat.img.width;
-        const sh = (dh / tileH) * mat.img.height;
-        ctx.drawImage(mat.img, 0, 0, sw, sh, tx, ty, dw, dh);
+        const sw2 = (dw / tileW) * mat.img.width;
+        const sh2 = (dh / tileH) * mat.img.height;
+        ctx.drawImage(mat.img, 0, 0, sw2, sh2, tx, ty, dw, dh);
       }
     }
   } else if (mat.c) {
@@ -1016,16 +595,6 @@ function redraw() {
     applyMaterial(ctx, layer.mat, layer.x, layer.y, layer.w, layer.h);
     ctx.restore();
   });
-}
-
-// ===== Build UI =====
-function buildCatBar() { /* handled by setCategory */ }
-function buildMatGrid() { /* handled by buildPatternGrid/buildColorGrid */ }
-
-function selectMat(mat) {
-  selectedMat = mat;
-  document.getElementById('selName').textContent = mat.name;
-  document.getElementById('selHint').textContent = (mat.maker || '') + ' ／ ' + (currentCategory === 'wall' ? '壁クロス' : '床材');
 }
 
 
