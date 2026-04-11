@@ -316,11 +316,15 @@ input[type=file] { display: none; }
           <div class="edit-tools">
             <button class="edit-tool-btn active" id="etClick" onclick="setSelectMode('click')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3l6 6-9 9-6-6z"/><path d="M3 21l3-3"/><path d="M9 3l1.5 1.5"/><path d="M3 9l1.5 1.5"/></svg>
-              <span>クリック選択</span>
+              <span>クリック</span>
             </button>
             <button class="edit-tool-btn" id="etBrush" onclick="setSelectMode('brush')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-              <span>ブラシ選択</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>ブラシ</span>
+            </button>
+            <button class="edit-tool-btn" id="etDrag" onclick="setSelectMode('drag')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/></svg>
+              <span>ドラッグ</span>
             </button>
           </div>
           <div class="edit-controls">
@@ -1609,6 +1613,7 @@ function setSelectMode(mode) {
   selectMode = mode;
   document.getElementById('etClick').classList.toggle('active', mode === 'click');
   document.getElementById('etBrush').classList.toggle('active', mode === 'brush');
+  document.getElementById('etDrag').classList.toggle('active', mode === 'drag');
   document.getElementById('clickSettings').style.display = mode === 'click' ? '' : 'none';
   document.getElementById('brushSettings').style.display = mode === 'brush' ? '' : 'none';
   mainCanvas.classList.toggle('brush-mode', mode === 'brush');
@@ -1616,8 +1621,10 @@ function setSelectMode(mode) {
     document.getElementById('editHint').innerHTML = '写真をクリックで似た色を自動選択。<br>Shift+クリックで追加選択。';
     octx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
     if (editMask) showEditMaskOverlay();
-  } else {
+  } else if (mode === 'brush') {
     document.getElementById('editHint').innerHTML = 'ドラッグでなぞって範囲を選択します。<br>何度でも塗り足せます。';
+  } else if (mode === 'drag') {
+    document.getElementById('editHint').innerHTML = 'ドラッグで範囲をなぞってください。<br>離すと選択が確定します。';
   }
 }
 
@@ -2010,6 +2017,117 @@ mainCanvas.addEventListener('touchend', function() {
   brushPainting = false;
   lastBrushPos = null;
   finishBrushStroke();
+});
+
+// ===== Edit drag selection (freehand polygon → editMask) =====
+let editDragPoints = [];
+let editDragging = false;
+
+function editDragToMask() {
+  if (editDragPoints.length < 10) return;
+  const W = mainCanvas.width, H = mainCanvas.height;
+  if (!editMask) editMask = new Uint8Array(W * H);
+
+  // Simplify points
+  const step = Math.max(1, Math.floor(editDragPoints.length / 80));
+  const pts = [];
+  for (let i = 0; i < editDragPoints.length; i += step) pts.push(editDragPoints[i]);
+
+  // Fill polygon into editMask using offscreen canvas
+  const tmpC = document.createElement('canvas');
+  tmpC.width = W; tmpC.height = H;
+  const tc = tmpC.getContext('2d');
+  tc.fillStyle = '#FFF';
+  tc.beginPath();
+  tc.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) tc.lineTo(pts[i].x, pts[i].y);
+  tc.closePath();
+  tc.fill();
+
+  const id = tc.getImageData(0, 0, W, H).data;
+  for (let i = 0; i < W * H; i++) {
+    if (id[i * 4] > 128) editMask[i] = 1;
+  }
+
+  showEditMaskOverlay();
+  document.getElementById('editActionArea').style.display = '';
+  let count = 0;
+  for (let i = 0; i < editMask.length; i++) if (editMask[i]) count++;
+  document.getElementById('editHint').innerHTML =
+    '<b>' + count.toLocaleString() + 'px 選択中</b><br>操作を選んでください。もう一度ドラッグで追加もできます。';
+  setStatus(count.toLocaleString() + 'px を選択しました');
+}
+
+// Mouse events for edit drag
+mainCanvas.addEventListener('mousedown', function(e) {
+  const editPanel = document.getElementById('panel-edit');
+  if (!editPanel.classList.contains('active')) return;
+  if (selectMode !== 'drag') return;
+  if (!originalImg) return;
+  e.preventDefault();
+  editDragging = true;
+  editDragPoints = [getCanvasPos(e)];
+  octx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+  if (editMask) showEditMaskOverlay();
+});
+
+mainCanvas.addEventListener('mousemove', function(e) {
+  if (!editDragging || selectMode !== 'drag') return;
+  const pos = getCanvasPos(e);
+  editDragPoints.push(pos);
+  if (editDragPoints.length > 1) {
+    const prev = editDragPoints[editDragPoints.length - 2];
+    octx.strokeStyle = 'rgba(80,130,255,0.8)';
+    octx.lineWidth = 2;
+    octx.beginPath();
+    octx.moveTo(prev.x, prev.y);
+    octx.lineTo(pos.x, pos.y);
+    octx.stroke();
+  }
+});
+
+mainCanvas.addEventListener('mouseup', function() {
+  if (!editDragging || selectMode !== 'drag') return;
+  editDragging = false;
+  editDragToMask();
+  editDragPoints = [];
+});
+
+// Touch events for edit drag
+mainCanvas.addEventListener('touchstart', function(e) {
+  const editPanel = document.getElementById('panel-edit');
+  if (!editPanel.classList.contains('active')) return;
+  if (selectMode !== 'drag') return;
+  if (!originalImg) return;
+  e.preventDefault();
+  editDragging = true;
+  const touch = e.touches[0];
+  const rect = mainCanvas.getBoundingClientRect();
+  editDragPoints = [{ x: (touch.clientX-rect.left)*(mainCanvas.width/rect.width), y: (touch.clientY-rect.top)*(mainCanvas.height/rect.height) }];
+  octx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+  if (editMask) showEditMaskOverlay();
+}, { passive: false });
+
+mainCanvas.addEventListener('touchmove', function(e) {
+  if (!editDragging || selectMode !== 'drag') return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = mainCanvas.getBoundingClientRect();
+  const pos = { x: (touch.clientX-rect.left)*(mainCanvas.width/rect.width), y: (touch.clientY-rect.top)*(mainCanvas.height/rect.height) };
+  editDragPoints.push(pos);
+  if (editDragPoints.length > 1) {
+    const prev = editDragPoints[editDragPoints.length - 2];
+    octx.strokeStyle = 'rgba(80,130,255,0.8)';
+    octx.lineWidth = 2;
+    octx.beginPath(); octx.moveTo(prev.x, prev.y); octx.lineTo(pos.x, pos.y); octx.stroke();
+  }
+}, { passive: false });
+
+mainCanvas.addEventListener('touchend', function() {
+  if (!editDragging || selectMode !== 'drag') return;
+  editDragging = false;
+  editDragToMask();
+  editDragPoints = [];
 });
 
 // ===== Freehand draw mode for material application =====
