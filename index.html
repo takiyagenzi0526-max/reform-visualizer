@@ -292,7 +292,11 @@ input[type=file] { display: none; }
         <div class="apply-area">
           <button class="btn primary btn-block" id="applyHint" onclick="startDrawMode()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            範囲を選択して適用
+            クリックで範囲を選択
+          </button>
+          <button class="btn btn-block" id="freehandBtn" style="margin-top:6px;border-color:var(--accent);color:var(--accent);" onclick="startFreehandMode()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M3 17l6-6 4 4 8-8"/></svg>
+            ドラッグで選択して適用
           </button>
           <div class="blend-controls">
             <div class="blend-row">
@@ -1707,6 +1711,15 @@ function showEditMaskOverlay() {
   octx.setLineDash([]);
 }
 
+// Lightweight brush paint — draw blue circle directly on overlay (fast)
+function brushPaintOverlay(px, py) {
+  const r = parseInt(document.getElementById('brushSize').value);
+  octx.fillStyle = 'rgba(80, 130, 255, 0.35)';
+  octx.beginPath();
+  octx.arc(px, py, r, 0, Math.PI * 2);
+  octx.fill();
+}
+
 // --- Fill White (下地処理) ---
 function fillWhite() {
   if (!editMask) { setStatus('先に範囲を選択してください'); return; }
@@ -1867,30 +1880,24 @@ function brushInterpolate(x0, y0, x1, y1) {
 
 let lastBrushPos = null;
 
-// --- Draw brush cursor circle on overlay ---
+// --- Draw brush cursor (circle only, no crosshair) ---
 function drawBrushCursor(pos) {
   const r = parseInt(document.getElementById('brushSize').value);
-  showEditMaskOverlay();
-  // Outer white circle
+  // White ring + blue inner ring
   octx.beginPath();
   octx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
   octx.strokeStyle = 'rgba(255,255,255,0.9)';
   octx.lineWidth = 2.5;
   octx.stroke();
-  // Inner blue circle
   octx.beginPath();
-  octx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-  octx.strokeStyle = 'rgba(100,140,255,0.6)';
+  octx.arc(pos.x, pos.y, r - 1, 0, Math.PI * 2);
+  octx.strokeStyle = 'rgba(80,130,255,0.5)';
   octx.lineWidth = 1;
   octx.stroke();
-  // Small center dot
-  octx.beginPath();
-  octx.arc(pos.x, pos.y, 2, 0, Math.PI * 2);
-  octx.fillStyle = 'rgba(255,255,255,0.8)';
-  octx.fill();
 }
 
-function finishBrushCount() {
+function finishBrushStroke() {
+  showEditMaskOverlay(); // Full quality overlay on finish
   if (editMask) {
     let count = 0;
     for (let i = 0; i < editMask.length; i++) if (editMask[i]) count++;
@@ -1900,21 +1907,33 @@ function finishBrushCount() {
   }
 }
 
-// Mouse: brush cursor always visible when hovering in brush mode
+// Mouse hover: show cursor circle
 mainCanvas.addEventListener('mousemove', function(e) {
   const editPanel = document.getElementById('panel-edit');
   if (!editPanel.classList.contains('active')) return;
   if (selectMode !== 'brush') return;
   if (drawMode) return;
-
   const pos = getCanvasPos(e);
 
   if (brushPainting && lastBrushPos) {
-    brushInterpolate(lastBrushPos.x, lastBrushPos.y, pos.x, pos.y);
+    // Interpolate brush strokes + paint overlay in real time
+    const r = parseInt(document.getElementById('brushSize').value);
+    const dist = Math.sqrt((pos.x-lastBrushPos.x)**2 + (pos.y-lastBrushPos.y)**2);
+    const steps = Math.max(1, Math.ceil(dist / 3));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const bx = lastBrushPos.x + (pos.x-lastBrushPos.x)*t;
+      const by = lastBrushPos.y + (pos.y-lastBrushPos.y)*t;
+      brushStroke(bx, by);
+      brushPaintOverlay(bx, by); // Instant blue circle on overlay
+    }
     lastBrushPos = pos;
   }
 
-  // Always show brush cursor (painting or just hovering)
+  // Show cursor (clear small area and redraw ring)
+  if (!brushPainting) {
+    showEditMaskOverlay();
+  }
   drawBrushCursor(pos);
 });
 
@@ -1929,44 +1948,40 @@ mainCanvas.addEventListener('mousedown', function(e) {
   brushPainting = true;
   const pos = getCanvasPos(e);
   brushStroke(pos.x, pos.y);
-  lastBrushPos = pos;
+  brushPaintOverlay(pos.x, pos.y);
   drawBrushCursor(pos);
+  lastBrushPos = pos;
   document.getElementById('editActionArea').style.display = '';
 });
 
-mainCanvas.addEventListener('mouseup', function(e) {
+mainCanvas.addEventListener('mouseup', function() {
   if (!brushPainting) return;
   brushPainting = false;
   lastBrushPos = null;
-  finishBrushCount();
+  finishBrushStroke();
 });
 
-// Hide brush cursor when mouse leaves canvas
-mainCanvas.addEventListener('mouseleave', function(e) {
+mainCanvas.addEventListener('mouseleave', function() {
   if (selectMode === 'brush' && !brushPainting) {
-    showEditMaskOverlay(); // Redraw overlay without cursor
+    showEditMaskOverlay();
   }
 });
 
-// Touch support for brush
+// Touch support
 mainCanvas.addEventListener('touchstart', function(e) {
   const editPanel = document.getElementById('panel-edit');
   if (!editPanel.classList.contains('active')) return;
   if (selectMode !== 'brush') return;
   if (drawMode) return;
   if (!originalImg) return;
-
   e.preventDefault();
   brushPainting = true;
   const touch = e.touches[0];
   const rect = mainCanvas.getBoundingClientRect();
-  const pos = {
-    x: (touch.clientX - rect.left) * (mainCanvas.width / rect.width),
-    y: (touch.clientY - rect.top) * (mainCanvas.height / rect.height)
-  };
+  const pos = { x: (touch.clientX-rect.left)*(mainCanvas.width/rect.width), y: (touch.clientY-rect.top)*(mainCanvas.height/rect.height) };
   brushStroke(pos.x, pos.y);
+  brushPaintOverlay(pos.x, pos.y);
   lastBrushPos = pos;
-  drawBrushCursor(pos);
   document.getElementById('editActionArea').style.display = '';
 }, { passive: false });
 
@@ -1975,21 +1990,141 @@ mainCanvas.addEventListener('touchmove', function(e) {
   e.preventDefault();
   const touch = e.touches[0];
   const rect = mainCanvas.getBoundingClientRect();
-  const pos = {
-    x: (touch.clientX - rect.left) * (mainCanvas.width / rect.width),
-    y: (touch.clientY - rect.top) * (mainCanvas.height / rect.height)
-  };
-  if (lastBrushPos) brushInterpolate(lastBrushPos.x, lastBrushPos.y, pos.x, pos.y);
+  const pos = { x: (touch.clientX-rect.left)*(mainCanvas.width/rect.width), y: (touch.clientY-rect.top)*(mainCanvas.height/rect.height) };
+  if (lastBrushPos) {
+    const dist = Math.sqrt((pos.x-lastBrushPos.x)**2 + (pos.y-lastBrushPos.y)**2);
+    const steps = Math.max(1, Math.ceil(dist / 3));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const bx = lastBrushPos.x + (pos.x-lastBrushPos.x)*t;
+      const by = lastBrushPos.y + (pos.y-lastBrushPos.y)*t;
+      brushStroke(bx, by);
+      brushPaintOverlay(bx, by);
+    }
+  }
   lastBrushPos = pos;
-  drawBrushCursor(pos);
 }, { passive: false });
 
-mainCanvas.addEventListener('touchend', function(e) {
+mainCanvas.addEventListener('touchend', function() {
   if (!brushPainting) return;
   brushPainting = false;
   lastBrushPos = null;
-  showEditMaskOverlay();
-  finishBrushCount();
+  finishBrushStroke();
+});
+
+// ===== Freehand draw mode for material application =====
+let freehandMode = false;
+let freehandPoints = [];
+let freehandDrawing = false;
+
+function startFreehandMode() {
+  if (!originalImg) { setStatus('先に写真をアップロードしてください'); return; }
+  if (!selectedMat) { setStatus('先に素材を選択してください'); return; }
+  freehandMode = true;
+  drawMode = true;
+  freehandPoints = [];
+  freehandDrawing = false;
+  mainCanvas.style.cursor = 'crosshair';
+  document.getElementById('mode-badge').textContent = '✋ ドラッグ選択モード';
+  document.getElementById('mode-badge').style.display = 'inline';
+  document.getElementById('freehandBtn').textContent = 'キャンセル';
+  document.getElementById('freehandBtn').onclick = cancelFreehand;
+  setStatus('ドラッグで範囲をなぞってください。離すと確定します。');
+}
+
+function cancelFreehand() {
+  freehandMode = false;
+  drawMode = false;
+  freehandPoints = [];
+  freehandDrawing = false;
+  mainCanvas.style.cursor = 'default';
+  document.getElementById('mode-badge').style.display = 'none';
+  document.getElementById('freehandBtn').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M3 17l6-6 4 4 8-8"/></svg> ドラッグで選択して適用';
+  document.getElementById('freehandBtn').onclick = startFreehandMode;
+  redraw(); drawOverlay();
+  setStatus('キャンセルしました');
+}
+
+function finishFreehand() {
+  if (freehandPoints.length < 10) { cancelFreehand(); return; }
+  // Simplify points (take every Nth)
+  const step = Math.max(1, Math.floor(freehandPoints.length / 60));
+  const pts = [];
+  for (let i = 0; i < freehandPoints.length; i += step) pts.push(freehandPoints[i]);
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  pts.forEach(p => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
+  layers.push({
+    mat: selectedMat, poly: pts,
+    x: minX, y: minY, w: maxX-minX, h: maxY-minY,
+    opacity, blend: blendMode, cat: currentCat, ts: Date.now()
+  });
+  freehandMode = false; drawMode = false;
+  freehandPoints = []; freehandDrawing = false;
+  mainCanvas.style.cursor = 'default';
+  document.getElementById('mode-badge').style.display = 'none';
+  document.getElementById('undoBtn').disabled = false;
+  document.getElementById('freehandBtn').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M3 17l6-6 4 4 8-8"/></svg> ドラッグで選択して適用';
+  document.getElementById('freehandBtn').onclick = startFreehandMode;
+  redraw(); drawOverlay();
+  setStatus('「' + selectedMat.name + '」を適用しました');
+  updateHistoryUI();
+}
+
+// Freehand mouse events
+mainCanvas.addEventListener('mousedown', function(e) {
+  if (!freehandMode) return;
+  e.preventDefault();
+  freehandDrawing = true;
+  freehandPoints = [getCanvasPos(e)];
+});
+mainCanvas.addEventListener('mousemove', function(e) {
+  if (!freehandDrawing) return;
+  const pos = getCanvasPos(e);
+  freehandPoints.push(pos);
+  // Draw trail on overlay
+  if (freehandPoints.length > 1) {
+    const prev = freehandPoints[freehandPoints.length - 2];
+    octx.strokeStyle = 'rgba(44,95,74,0.7)';
+    octx.lineWidth = 2;
+    octx.beginPath();
+    octx.moveTo(prev.x, prev.y);
+    octx.lineTo(pos.x, pos.y);
+    octx.stroke();
+  }
+});
+mainCanvas.addEventListener('mouseup', function() {
+  if (!freehandDrawing) return;
+  freehandDrawing = false;
+  finishFreehand();
+});
+// Freehand touch events
+mainCanvas.addEventListener('touchstart', function(e) {
+  if (!freehandMode) return;
+  e.preventDefault();
+  freehandDrawing = true;
+  const touch = e.touches[0];
+  const rect = mainCanvas.getBoundingClientRect();
+  freehandPoints = [{ x: (touch.clientX-rect.left)*(mainCanvas.width/rect.width), y: (touch.clientY-rect.top)*(mainCanvas.height/rect.height) }];
+}, { passive: false });
+mainCanvas.addEventListener('touchmove', function(e) {
+  if (!freehandDrawing) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = mainCanvas.getBoundingClientRect();
+  const pos = { x: (touch.clientX-rect.left)*(mainCanvas.width/rect.width), y: (touch.clientY-rect.top)*(mainCanvas.height/rect.height) };
+  freehandPoints.push(pos);
+  if (freehandPoints.length > 1) {
+    const prev = freehandPoints[freehandPoints.length - 2];
+    octx.strokeStyle = 'rgba(44,95,74,0.7)';
+    octx.lineWidth = 2;
+    octx.beginPath(); octx.moveTo(prev.x, prev.y); octx.lineTo(pos.x, pos.y); octx.stroke();
+  }
+}, { passive: false });
+mainCanvas.addEventListener('touchend', function() {
+  if (!freehandDrawing) return;
+  freehandDrawing = false;
+  finishFreehand();
 });
 
 // ===== Init =====
