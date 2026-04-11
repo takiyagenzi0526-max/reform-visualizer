@@ -313,18 +313,22 @@ input[type=file] { display: none; }
       <!-- Edit panel -->
       <div class="sb-panel" id="panel-edit">
         <div class="edit-panel-inner">
-          <div class="edit-tools">
+          <div class="edit-tools" style="flex-wrap:wrap;">
             <button class="edit-tool-btn active" id="etClick" onclick="setSelectMode('click')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3l6 6-9 9-6-6z"/><path d="M3 21l3-3"/><path d="M9 3l1.5 1.5"/><path d="M3 9l1.5 1.5"/></svg>
-              <span>クリック</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3l6 6-9 9-6-6z"/><path d="M3 21l3-3"/></svg>
+              <span>マジック</span>
             </button>
-            <button class="edit-tool-btn" id="etBrush" onclick="setSelectMode('brush')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
-              <span>ブラシ</span>
+            <button class="edit-tool-btn" id="etPoly" onclick="setSelectMode('poly')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,3 22,15 12,21 2,15"/></svg>
+              <span>範囲指定</span>
             </button>
             <button class="edit-tool-btn" id="etDrag" onclick="setSelectMode('drag')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/></svg>
               <span>ドラッグ</span>
+            </button>
+            <button class="edit-tool-btn" id="etBrush" onclick="setSelectMode('brush')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>ブラシ</span>
             </button>
           </div>
           <div class="edit-controls">
@@ -1610,17 +1614,25 @@ let selectMode = 'click'; // 'click' or 'brush'
 let brushPainting = false;
 
 function setSelectMode(mode) {
+  // Cancel any active poly selection when switching modes
+  if (selectMode === 'poly' && mode !== 'poly') {
+    editPolyPoints = [];
+    editPolyActive = false;
+  }
   selectMode = mode;
   document.getElementById('etClick').classList.toggle('active', mode === 'click');
+  document.getElementById('etPoly').classList.toggle('active', mode === 'poly');
   document.getElementById('etBrush').classList.toggle('active', mode === 'brush');
   document.getElementById('etDrag').classList.toggle('active', mode === 'drag');
   document.getElementById('clickSettings').style.display = mode === 'click' ? '' : 'none';
   document.getElementById('brushSettings').style.display = mode === 'brush' ? '' : 'none';
   mainCanvas.classList.toggle('brush-mode', mode === 'brush');
+  octx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+  if (editMask) showEditMaskOverlay();
   if (mode === 'click') {
     document.getElementById('editHint').innerHTML = '写真をクリックで似た色を自動選択。<br>Shift+クリックで追加選択。';
-    octx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
-    if (editMask) showEditMaskOverlay();
+  } else if (mode === 'poly') {
+    document.getElementById('editHint').innerHTML = 'クリックで頂点を追加。<br>始点付近をクリック or ダブルクリックで確定。';
   } else if (mode === 'brush') {
     document.getElementById('editHint').innerHTML = 'ドラッグでなぞって範囲を選択します。<br>何度でも塗り足せます。';
   } else if (mode === 'drag') {
@@ -2017,6 +2029,143 @@ mainCanvas.addEventListener('touchend', function() {
   brushPainting = false;
   lastBrushPos = null;
   finishBrushStroke();
+});
+
+// ===== Edit polygon selection (click vertices → editMask) =====
+let editPolyPoints = [];
+let editPolyActive = false;
+
+function editPolyToMask(pts) {
+  const W = mainCanvas.width, H = mainCanvas.height;
+  if (!editMask) editMask = new Uint8Array(W * H);
+  const tmpC = document.createElement('canvas');
+  tmpC.width = W; tmpC.height = H;
+  const tc = tmpC.getContext('2d');
+  tc.fillStyle = '#FFF';
+  tc.beginPath();
+  tc.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) tc.lineTo(pts[i].x, pts[i].y);
+  tc.closePath();
+  tc.fill();
+  const id = tc.getImageData(0, 0, W, H).data;
+  for (let i = 0; i < W * H; i++) {
+    if (id[i * 4] > 128) editMask[i] = 1;
+  }
+  showEditMaskOverlay();
+  document.getElementById('editActionArea').style.display = '';
+  let count = 0;
+  for (let i = 0; i < editMask.length; i++) if (editMask[i]) count++;
+  document.getElementById('editHint').innerHTML =
+    '<b>' + count.toLocaleString() + 'px 選択中</b><br>操作を選んでください。もう一度クリックで追加選択もできます。';
+  setStatus(count.toLocaleString() + 'px を選択しました');
+}
+
+function drawEditPolyOverlay() {
+  octx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+  if (editMask) showEditMaskOverlay();
+  if (editPolyPoints.length === 0) return;
+  const pts = editPolyPoints;
+  // Draw polygon lines
+  octx.strokeStyle = 'rgba(80,130,255,0.9)';
+  octx.lineWidth = 2;
+  octx.setLineDash([]);
+  octx.beginPath();
+  octx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) octx.lineTo(pts[i].x, pts[i].y);
+  octx.stroke();
+  // Draw vertices
+  pts.forEach((p, i) => {
+    octx.beginPath();
+    octx.arc(p.x, p.y, i === 0 ? 6 : 4, 0, Math.PI * 2);
+    octx.fillStyle = i === 0 ? '#4A80FF' : '#FFF';
+    octx.fill();
+    octx.strokeStyle = '#4A80FF';
+    octx.lineWidth = 2;
+    octx.stroke();
+  });
+  // Label on first point
+  if (pts.length >= 3) {
+    octx.font = '11px sans-serif';
+    octx.fillStyle = '#4A80FF';
+    octx.fillText('始点クリックで確定', pts[0].x + 10, pts[0].y - 8);
+  }
+}
+
+function finishEditPoly() {
+  if (editPolyPoints.length < 3) {
+    editPolyPoints = [];
+    editPolyActive = false;
+    drawEditPolyOverlay();
+    return;
+  }
+  editPolyToMask([...editPolyPoints]);
+  editPolyPoints = [];
+  editPolyActive = false;
+}
+
+// Click handler for poly mode
+mainCanvas.addEventListener('click', function(e) {
+  const editPanel = document.getElementById('panel-edit');
+  if (!editPanel.classList.contains('active')) return;
+  if (selectMode !== 'poly') return;
+  if (!originalImg) return;
+
+  e.stopPropagation();
+  const pos = getCanvasPos(e);
+
+  if (editPolyPoints.length >= 3) {
+    const first = editPolyPoints[0];
+    const dist = Math.sqrt((pos.x - first.x) ** 2 + (pos.y - first.y) ** 2);
+    if (dist < 15) { finishEditPoly(); return; }
+  }
+
+  editPolyPoints.push(pos);
+  editPolyActive = true;
+  drawEditPolyOverlay();
+  setStatus('頂点 ' + editPolyPoints.length + ' 個目を追加（あと' + Math.max(0, 3 - editPolyPoints.length) + '個以上で確定可能）');
+}, true);
+
+// Double-click to finish poly
+mainCanvas.addEventListener('dblclick', function(e) {
+  const editPanel = document.getElementById('panel-edit');
+  if (!editPanel.classList.contains('active')) return;
+  if (selectMode !== 'poly') return;
+  if (editPolyPoints.length < 3) return;
+  e.preventDefault();
+  editPolyPoints.pop(); // remove extra point from dblclick
+  finishEditPoly();
+});
+
+// Mousemove: show line from last point to cursor
+mainCanvas.addEventListener('mousemove', function(e) {
+  const editPanel = document.getElementById('panel-edit');
+  if (!editPanel.classList.contains('active')) return;
+  if (selectMode !== 'poly' || editPolyPoints.length === 0) return;
+
+  const pos = getCanvasPos(e);
+  drawEditPolyOverlay();
+  // Dashed line from last point to cursor
+  const last = editPolyPoints[editPolyPoints.length - 1];
+  octx.beginPath();
+  octx.moveTo(last.x, last.y);
+  octx.lineTo(pos.x, pos.y);
+  octx.strokeStyle = 'rgba(80,130,255,0.5)';
+  octx.lineWidth = 1.5;
+  octx.setLineDash([4, 4]);
+  octx.stroke();
+  octx.setLineDash([]);
+  // Highlight first point if close
+  if (editPolyPoints.length >= 3) {
+    const first = editPolyPoints[0];
+    const dist = Math.sqrt((pos.x - first.x) ** 2 + (pos.y - first.y) ** 2);
+    if (dist < 15) {
+      octx.beginPath();
+      octx.arc(first.x, first.y, 10, 0, Math.PI * 2);
+      octx.strokeStyle = '#4A80FF';
+      octx.lineWidth = 2.5;
+      octx.stroke();
+    }
+  }
 });
 
 // ===== Edit drag selection (freehand polygon → editMask) =====
