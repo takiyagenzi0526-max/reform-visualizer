@@ -55,9 +55,9 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
 #drop-zone .dz-icon { width: 52px; height: 52px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; }
 #drop-zone p { font-size: 15px; color: var(--text2); font-weight: 500; }
 #drop-zone span { font-size: 12px; color: var(--text3); }
-#main-canvas { display: none; max-width: 100%; max-height: 100%; border-radius: var(--radius-sm); box-shadow: 0 2px 16px rgba(0,0,0,0.12); cursor: crosshair; touch-action: none; }
+#main-canvas { display: none; max-width: 100%; max-height: 100%; box-shadow: 0 2px 16px rgba(0,0,0,0.12); cursor: crosshair; touch-action: none; }
 #main-canvas.brush-mode { cursor: none; }
-#overlay-canvas { position: absolute; pointer-events: none; border-radius: var(--radius-sm); }
+#overlay-canvas { position: absolute; pointer-events: none; }
 
 /* Status bar */
 #status-bar { height: 32px; background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; }
@@ -155,7 +155,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
 #compare-inner h2 { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: var(--text); }
 .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .compare-col h3 { font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 8px; }
-.compare-col canvas { width: 100%; border-radius: var(--radius-sm); display: block; box-shadow: 0 1px 6px rgba(0,0,0,0.1); }
+.compare-col canvas { width: 100%; display: block; box-shadow: 0 1px 6px rgba(0,0,0,0.1); }
 #compare-close { margin-top: 14px; }
 
 /* Model number panel */
@@ -290,6 +290,10 @@ input[type=file] { display: none; }
           </div>
         </div>
         <div class="apply-area">
+          <button class="btn primary btn-block" id="applyToSelectionBtn" onclick="applyMatToEditMask()" style="display:none;margin-bottom:6px;background:#6366f1;border-color:#6366f1;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M5 13l4 4L19 7"/></svg>
+            選択範囲に素材を適用
+          </button>
           <button class="btn primary btn-block" id="applyHint" onclick="startDrawMode()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             クリックで範囲を選択
@@ -1426,6 +1430,9 @@ function switchSbTab(tab, el) {
   document.querySelectorAll('.sb-panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('panel-' + tab).classList.add('active');
+  // Show/hide "apply to selection" button based on editMask
+  const btn = document.getElementById('applyToSelectionBtn');
+  if (btn) btn.style.display = (tab === 'materials' && editMask) ? '' : 'none';
 }
 
 // ===== Status =====
@@ -1758,14 +1765,12 @@ function fillWhite() {
   }
   ctx.putImageData(imgData, 0, 0);
 
-  // Commit to originalImg
+  // Commit to originalImg (keep selection)
   commitToOriginal();
-  editMask = null;
-  octx.clearRect(0, 0, W, H);
-  document.getElementById('editActionArea').style.display = 'none';
+  showEditMaskOverlay();
   document.getElementById('editHint').innerHTML =
-    '白く塗りました。「素材」タブでクロスやCFを貼ってください。<br>クリックで再度選択できます。';
-  setStatus('選択範囲を白く塗りました。素材タブで素材を貼ってください。');
+    '白く塗りました。選択範囲はそのまま維持しています。<br>「素材」タブで素材を選ぶとこの範囲に貼れます。';
+  setStatus('白く塗りました。選択を維持中 — 素材タブで素材を貼れます。');
 }
 
 // --- Magic Erase (surrounding pixel interpolation) ---
@@ -1836,12 +1841,65 @@ function magicErase() {
   ctx.putImageData(imgData, 0, 0);
 
   commitToOriginal();
-  editMask = null;
-  octx.clearRect(0, 0, W, H);
-  document.getElementById('editActionArea').style.display = 'none';
+  showEditMaskOverlay();
   document.getElementById('editHint').innerHTML =
-    '消去しました。クリックで再度選択できます。';
-  setStatus('選択範囲を消去しました');
+    '消去しました。選択範囲はそのまま維持しています。';
+  setStatus('消去しました。選択を維持中。');
+}
+
+// --- Apply material to editMask selection ---
+function applyMatToEditMask() {
+  if (!editMask || !selectedMat) { setStatus('素材と選択範囲が必要です'); return; }
+  const W = mainCanvas.width, H = mainCanvas.height;
+  const mode = blendMode;
+
+  // Render material onto an offscreen canvas
+  let minX = W, minY = H, maxX = 0, maxY = 0;
+  for (let i = 0; i < editMask.length; i++) {
+    if (editMask[i]) {
+      const x = i % W, y = (i / W) | 0;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX <= minX || maxY <= minY) return;
+
+  // Create offscreen with blended material
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width = W; offCanvas.height = H;
+  const offCtx = offCanvas.getContext('2d');
+  offCtx.drawImage(originalImg, 0, 0, W, H);
+  if (mode !== 'normal') {
+    offCtx.globalCompositeOperation = mode;
+  }
+  offCtx.globalAlpha = opacity;
+  applyMaterial(offCtx, selectedMat, minX, minY, maxX - minX, maxY - minY);
+  offCtx.globalCompositeOperation = 'source-over';
+  offCtx.globalAlpha = 1;
+
+  // Apply only to masked pixels
+  const srcData = ctx.getImageData(0, 0, W, H);
+  const matData = offCtx.getImageData(0, 0, W, H);
+  const sd = srcData.data;
+  const md = matData.data;
+
+  for (let i = 0; i < editMask.length; i++) {
+    if (editMask[i]) {
+      const pi = i * 4;
+      // Blend: mix original with material result based on opacity
+      sd[pi]   = md[pi];
+      sd[pi+1] = md[pi+1];
+      sd[pi+2] = md[pi+2];
+    }
+  }
+  ctx.putImageData(srcData, 0, 0);
+
+  commitToOriginal();
+  showEditMaskOverlay();
+  document.getElementById('undoBtn').disabled = false;
+  const matName = selectedMat.label ? selectedMat.name + ' ' + selectedMat.label : selectedMat.name;
+  setStatus('「' + matName + '」を選択範囲に適用しました。別の素材に切り替えて再適用もできます。');
+  updateHistoryUI();
 }
 
 // --- Commit canvas state to originalImg (with undo snapshot) ---
